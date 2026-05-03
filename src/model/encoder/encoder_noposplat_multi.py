@@ -97,8 +97,22 @@ class EncoderNoPoSplatMulti(Encoder[EncoderNoPoSplatCfg]):
             # self.head3 = transpose_to_landscape(self.to_gaussians, activate=landscape_only)
             # self.head4 = transpose_to_landscape(self.to_gaussians2, activate=landscape_only)
         elif head_type == 'dpt_gs':
-            self.gaussian_param_head = head_factory(head_type, 'gs_params', self.backbone, has_conf=False, out_nchan=self.raw_gs_dim)
-            self.gaussian_param_head2 = head_factory(head_type, 'gs_params', self.backbone, has_conf=False, out_nchan=self.raw_gs_dim)
+            self.gaussian_param_head = head_factory(
+                head_type,
+                'gs_params',
+                self.backbone,
+                has_conf=False,
+                out_nchan=self.raw_gs_dim,
+                preconditioner_cfg=cfg.orthogonal_preconditioner,
+            )
+            self.gaussian_param_head2 = head_factory(
+                head_type,
+                'gs_params',
+                self.backbone,
+                has_conf=False,
+                out_nchan=self.raw_gs_dim,
+                preconditioner_cfg=cfg.orthogonal_preconditioner,
+            )
         else:
             raise NotImplementedError(f"unexpected {head_type=}")
 
@@ -123,12 +137,22 @@ class EncoderNoPoSplatMulti(Encoder[EncoderNoPoSplatCfg]):
         head = getattr(self, f'head{head_num}')
         return head(decout, img_shape, ray_embedding=ray_embedding)
 
+    def set_preconditioner_step(self, global_step: int):
+        for module in self.modules():
+            if module is self:
+                continue
+            set_step = getattr(module, "set_step", None)
+            if callable(set_step):
+                set_step(global_step)
+
     def forward(
         self,
         context: dict,
         global_step: int = 0,
         visualization_dump: Optional[dict] = None,
     ) -> Gaussians:
+        self.set_preconditioner_step(global_step)
+
         device = context["image"].device
         b, v, _, h, w = context["image"].shape
 

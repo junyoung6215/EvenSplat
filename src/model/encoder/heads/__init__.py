@@ -9,7 +9,14 @@ from .linear_head import LinearPts3d
 from .dpt_head import create_dpt_head
 
 
-def head_factory(head_type, output_mode, net, has_conf=False, out_nchan=3):
+def head_factory(
+    head_type,
+    output_mode,
+    net,
+    has_conf=False,
+    out_nchan=3,
+    preconditioner_cfg=None,
+):
     """" build a prediction head for the decoder
     """
     if head_type == 'linear' and output_mode == 'pts3d':
@@ -19,6 +26,12 @@ def head_factory(head_type, output_mode, net, has_conf=False, out_nchan=3):
     elif head_type == 'dpt' and output_mode == 'gs_params':
         return create_dpt_head(net, has_conf=False, out_nchan=out_nchan, postprocess_func=None)
     elif head_type == 'dpt_gs' and output_mode == 'gs_params':
-        return create_gs_dpt_head(net, has_conf=False, out_nchan=out_nchan, postprocess_func=None)
+        return create_gs_dpt_head(
+            net,
+            has_conf=False,
+            out_nchan=out_nchan,
+            postprocess_func=None,
+            preconditioner_cfg=preconditioner_cfg,
+        )
     else:
         raise NotImplementedError(f"unexpected {head_type=} and {output_mode=}")

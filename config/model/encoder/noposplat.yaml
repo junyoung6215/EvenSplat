@@ -31,3 +31,13 @@ apply_bounds_shim: true
 gs_params_head_type: dpt_gs
 pose_free: true
 pretrained_weights: ""
+
+orthogonal_preconditioner:
+  enabled: false
+  mode: hadamard
+  dim: 256
+  mix: 0.0
+  target_mix: 1.0
+  warmup_steps: 5000
+  seed: 0
+  collect_stats: false

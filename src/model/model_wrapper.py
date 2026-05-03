@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Protocol, runtime_checkable, Any
+from typing import Optional, Protocol, runtime_checkable
 
 import moviepy.editor as mpy
 import torch
@@ -13,6 +13,7 @@ from lightning.pytorch.utilities import rank_zero_only
 from tabulate import tabulate
 from torch import Tensor, nn, optim
 
+from ..analysis.olp_eval_recorder import OlpEvalRecorder
 from ..dataset.data_module import get_data_shim
 from ..dataset.types import BatchedExample
 from ..evaluation.metrics import compute_lpips, compute_psnr, compute_ssim
@@ -62,6 +63,7 @@ class TestCfg:
     save_image: bool
     save_video: bool
     save_compare: bool
+    save_olp_stats: bool = False
 
 
 @dataclass
@@ -129,6 +131,7 @@ class ModelWrapper(LightningModule):
 
         # This is used for testing.
         self.benchmarker = Benchmarker()
+        self.olp_eval_recorder = OlpEvalRecorder()
 
     def training_step(self, batch, batch_idx):
         # combine batch from different dataloaders
@@ -180,6 +183,12 @@ class ModelWrapper(LightningModule):
             self.log(f"loss/{loss_fn.name}", loss)
             total_loss = total_loss + loss
 
+        preconditioner_stats = self.olp_eval_recorder.collect_preconditioner_stats(
+            self.encoder
+        )
+        for key, value in preconditioner_stats.items():
+            self.log(f"olp/{key}", value)
+
         # distillation
         if self.distiller is not None and self.global_step <= self.train_cfg.distill_max_steps:
             with torch.no_grad():
@@ -220,10 +229,12 @@ class ModelWrapper(LightningModule):
             print(f"Test step {batch_idx:0>6}.")
 
         # Render Gaussians.
+        visualization_dump = {} if self.test_cfg.save_olp_stats else None
         with self.benchmarker.time("encoder"):
             gaussians = self.encoder(
                 batch["context"],
                 self.global_step,
+                visualization_dump=visualization_dump,
             )
 
         # align the target pose
@@ -261,6 +272,17 @@ class ModelWrapper(LightningModule):
         (scene,) = batch["scene"]
         name = get_cfg()["wandb"]["name"]
         path = self.test_cfg.output_path / name
+
+        if self.test_cfg.save_olp_stats and visualization_dump is not None:
+            metrics = all_metrics if self.test_cfg.compute_scores else None
+            self.olp_eval_recorder.record_test_batch(
+                self.encoder,
+                visualization_dump,
+                scene,
+                batch_idx,
+                metrics,
+            )
+
         if self.test_cfg.save_image:
             for index, color in zip(batch["target"]["index"][0], output.color[0]):
                 save_image(color, path / scene / f"color/{index:0>6}.png")
@@ -356,10 +378,13 @@ class ModelWrapper(LightningModule):
 
     def on_test_end(self) -> None:
         name = get_cfg()["wandb"]["name"]
-        self.benchmarker.dump(self.test_cfg.output_path / name / "benchmark.json")
+        path = self.test_cfg.output_path / name
+        self.benchmarker.dump(path / "benchmark.json")
         self.benchmarker.dump_memory(
-            self.test_cfg.output_path / name / "peak_memory.json"
+            path / "peak_memory.json"
         )
+        if self.test_cfg.save_olp_stats:
+            self.olp_eval_recorder.write(path)
         self.benchmarker.summarize()
 
     @rank_zero_only

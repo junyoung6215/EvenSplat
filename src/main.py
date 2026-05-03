@@ -85,6 +85,7 @@ def train(cfg_dict: DictConfig):
             every_n_train_steps=cfg.checkpointing.every_n_train_steps,
             save_top_k=cfg.checkpointing.save_top_k,
             save_weights_only=cfg.checkpointing.save_weights_only,
+            save_last=True,
             monitor="info/global_step",
             mode="max",
         )

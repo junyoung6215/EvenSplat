@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+import csv
+import json
+from pathlib import Path
+from typing import Any
+
+import torch
+from torch import nn
+
+from .olp_stats import gaussian_tail_stats, merge_stats, save_stats_json
+
+
+class OlpEvalRecorder:
+    """Small recorder for OLP latent stats and Gaussian tail stats."""
+
+    def __init__(self) -> None:
+        self.per_scene: list[dict[str, Any]] = []
+
+    def collect_preconditioner_stats(self, encoder: nn.Module) -> dict[str, float]:
+        stats_by_key: dict[str, list[float]] = {}
+        for module in encoder.modules():
+            latest_stats = getattr(module, "latest_stats", None)
+            if not latest_stats:
+                continue
+            for key, value in latest_stats.items():
+                stats_by_key.setdefault(f"latent_{key}", []).append(float(value))
+        return {
+            key: sum(values) / len(values)
+            for key, values in stats_by_key.items()
+            if values
+        }
+
+    def record_test_batch(
+        self,
+        encoder: nn.Module,
+        visualization_dump: dict[str, torch.Tensor],
+        scene: str,
+        batch_idx: int,
+        metrics: dict[str, torch.Tensor] | None = None,
+    ) -> None:
+        stats: dict[str, Any] = {
+            "scene": scene,
+            "batch_idx": batch_idx,
+        }
+        stats.update(self.collect_preconditioner_stats(encoder))
+        stats.update(
+            gaussian_tail_stats(
+                visualization_dump["opacities"],
+                visualization_dump["scales"],
+            )
+        )
+        if metrics is not None:
+            stats.update(
+                {
+                    key: float(value.detach().cpu())
+                    for key, value in metrics.items()
+                }
+            )
+        self.per_scene.append(stats)
+
+    def write(self, output_dir: str | Path) -> None:
+        if not self.per_scene:
+            return
+
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        serializable_stats = [
+            {
+                key: value
+                for key, value in item.items()
+                if isinstance(value, (str, int, float))
+            }
+            for item in self.per_scene
+        ]
+        (output_dir / "olp_stats_per_scene.json").write_text(
+            json.dumps(serializable_stats, indent=2, sort_keys=True) + "\n"
+        )
+        numeric_stats = [
+            {
+                key: value
+                for key, value in item.items()
+                if isinstance(value, (int, float))
+            }
+            for item in serializable_stats
+        ]
+        save_stats_json(
+            merge_stats(numeric_stats),
+            output_dir / "olp_stats_summary.json",
+        )
+        with (output_dir / "olp_stats_per_scene.csv").open("w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=serializable_stats[0].keys())
+            writer.writeheader()
+            writer.writerows(serializable_stats)

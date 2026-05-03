@@ -1,0 +1,9 @@
+name: noposplat-olp-a100
+channels:
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - cuda-toolkit=11.8

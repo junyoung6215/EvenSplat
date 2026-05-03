@@ -33,6 +33,18 @@ class OpacityMappingCfg:
 
 
 @dataclass
+class OrthogonalPreconditionerCfg:
+    enabled: bool = False
+    mode: str = "hadamard"
+    dim: int = 256
+    mix: float = 0.0
+    target_mix: float = 1.0
+    warmup_steps: int = 5000
+    seed: int = 0
+    collect_stats: bool = False
+
+
+@dataclass
 class EncoderNoPoSplatCfg:
     name: Literal["noposplat", "noposplat_multi"]
     d_feature: int
@@ -49,6 +61,7 @@ class EncoderNoPoSplatCfg:
     input_std: tuple[float, float, float] = (0.5, 0.5, 0.5)
     pretrained_weights: str = ""
     pose_free: bool = True
+    orthogonal_preconditioner: Optional[OrthogonalPreconditionerCfg] = None
 
 
 def rearrange_head(feat, patch_size, H, W):
@@ -110,8 +123,22 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
             self.gaussian_param_head2 = head_factory(head_type, 'gs_params', self.backbone, has_conf=False, out_nchan=self.raw_gs_dim)  # for view2 3DGS
 
         elif head_type == 'dpt_gs':
-            self.gaussian_param_head = head_factory(head_type, 'gs_params', self.backbone, has_conf=False, out_nchan=self.raw_gs_dim)
-            self.gaussian_param_head2 = head_factory(head_type, 'gs_params', self.backbone, has_conf=False, out_nchan=self.raw_gs_dim)
+            self.gaussian_param_head = head_factory(
+                head_type,
+                'gs_params',
+                self.backbone,
+                has_conf=False,
+                out_nchan=self.raw_gs_dim,
+                preconditioner_cfg=cfg.orthogonal_preconditioner,
+            )
+            self.gaussian_param_head2 = head_factory(
+                head_type,
+                'gs_params',
+                self.backbone,
+                has_conf=False,
+                out_nchan=self.raw_gs_dim,
+                preconditioner_cfg=cfg.orthogonal_preconditioner,
+            )
         else:
             raise NotImplementedError(f"unexpected {head_type=}")
 
@@ -136,12 +163,22 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
         head = getattr(self, f'head{head_num}')
         return head(decout, img_shape, ray_embedding=ray_embedding)
 
+    def set_preconditioner_step(self, global_step: int):
+        for module in self.modules():
+            if module is self:
+                continue
+            set_step = getattr(module, "set_step", None)
+            if callable(set_step):
+                set_step(global_step)
+
     def forward(
         self,
         context: dict,
         global_step: int = 0,
         visualization_dump: Optional[dict] = None,
     ) -> Gaussians:
+        self.set_preconditioner_step(global_step)
+
         device = context["image"].device
         b, v, _, h, w = context["image"].shape
 
