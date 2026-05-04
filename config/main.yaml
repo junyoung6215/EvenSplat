@@ -61,6 +61,10 @@ test:
   save_video: false
   save_compare: false
   save_olp_stats: false
+  olp_tau_alpha: 0.95
+  olp_tau_scale: null
+  olp_tau_volume: null
+  olp_adaptive_tau_scale_quantile: 0.95
 
 seed: 111123
 

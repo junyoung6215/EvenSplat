@@ -14,8 +14,18 @@ from .olp_stats import gaussian_tail_stats, merge_stats, save_stats_json
 class OlpEvalRecorder:
     """Small recorder for OLP latent stats and Gaussian tail stats."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        tau_alpha: float = 0.95,
+        tau_scale: float | None = None,
+        tau_volume: float | None = None,
+        adaptive_tau_scale_quantile: float | None = 0.95,
+    ) -> None:
         self.per_scene: list[dict[str, Any]] = []
+        self.tau_alpha = tau_alpha
+        self.tau_scale = tau_scale
+        self.tau_volume = tau_volume
+        self.adaptive_tau_scale_quantile = adaptive_tau_scale_quantile
 
     def collect_preconditioner_stats(self, encoder: nn.Module) -> dict[str, float]:
         stats_by_key: dict[str, list[float]] = {}
@@ -48,6 +58,10 @@ class OlpEvalRecorder:
             gaussian_tail_stats(
                 visualization_dump["opacities"],
                 visualization_dump["scales"],
+                tau_alpha=self.tau_alpha,
+                tau_scale=self.tau_scale,
+                tau_volume=self.tau_volume,
+                adaptive_tau_scale_quantile=self.adaptive_tau_scale_quantile,
             )
         )
         if metrics is not None:

@@ -56,6 +56,23 @@ def test_norm_is_preserved_for_mix_one():
     )
 
 
+def test_identity_stats_mode_collects_stats():
+    x = torch.randn(2, 256, 4, 4)
+    module = RandomizedHadamardPreconditioner(
+        dim=256,
+        enabled=True,
+        mix=0.0,
+        target_mix=0.0,
+        warmup_steps=0,
+        collect_stats=True,
+    )
+    y = module(x)
+    assert y is x
+    assert module.latest_stats["effective_mix"] == 0.0
+    assert "input_max_rms" in module.latest_stats
+    assert "output_max_rms" in module.latest_stats
+
+
 def test_warmup_mix_schedule():
     module = RandomizedHadamardPreconditioner(
         dim=256,
@@ -94,14 +111,16 @@ def test_stats_helpers_return_scalars():
 
     opacities = torch.rand(2, 32, 1)
     scales = torch.rand(2, 32, 3)
-    gaussian = gaussian_tail_stats(opacities, scales, tau_scale=0.5)
+    gaussian = gaussian_tail_stats(opacities, scales)
     assert "floater_proxy" in gaussian
+    assert "scale_tail_threshold" in gaussian
     assert all(isinstance(value, float) for value in gaussian.values())
 
 
 if __name__ == "__main__":
     test_disabled_returns_input_exactly()
     test_norm_is_preserved_for_mix_one()
+    test_identity_stats_mode_collects_stats()
     test_warmup_mix_schedule()
     test_output_shape_equals_input_shape()
     test_stats_helpers_return_scalars()

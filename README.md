@@ -38,6 +38,7 @@ stabilize Gaussian parameter prediction in the `dpt_gs` Gaussian head.
 scripts/create_a100_env.sh
 conda activate noposplat-olp-a100
 
+scripts/run_re10k_smoke.sh
 scripts/run_re10k_original_eval.sh
 scripts/run_re10k_olp_zeroshot.sh
 scripts/run_re10k_ft_control.sh
@@ -54,6 +55,19 @@ scripts/run_re10k_collect_stats.sh
 
 Outputs are written under `outputs/olp_re10k/`. The scripts also save command
 logs, git commit hashes, package fingerprints, and OLP statistics when enabled.
+
+Important experiment notes:
+
+- Run `scripts/run_re10k_smoke.sh` first on a single A100. It defaults to
+  `BATCH_SIZE=1` and `MAX_STEPS=2` to catch checkpoint, CUDA, and memory issues.
+- Baseline stats runs enable the OLP-H module with `mix=0` and `target_mix=0`.
+  This keeps the output identity-equivalent while still collecting latent stats.
+- OLP-H random sign/permutation buffers are `persistent=False`. Reuse the same
+  `OLP_SEED` for fine-tuning and evaluation.
+- If `test.olp_tau_scale=null`, floater proxy uses the per-batch scale p95 as
+  the adaptive threshold. Set `OLP_TAU_SCALE` for a fixed threshold.
+- Training runs write `pretrained_load_audit.json` so missing/unexpected
+  checkpoint keys are visible before a long fine-tuning run.
 
 ## Documentation
 

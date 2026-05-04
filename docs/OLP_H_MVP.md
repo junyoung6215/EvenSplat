@@ -17,6 +17,13 @@ thin wiring points; the experiment logic lives in added modules.
   - Small recorder used by `ModelWrapper` when `test.save_olp_stats=true`.
   - Writes `olp_stats_summary.json`, `olp_stats_per_scene.json`, and
     `olp_stats_per_scene.csv`.
+  - Computes `floater_proxy` even without a fixed `tau_scale` by falling back
+    to the per-batch scale p95 threshold.
+
+- `src/misc/checkpoint_audit.py`
+  - Loads encoder pretrained weights for fine-tuning.
+  - Prints and writes missing/unexpected key counts to
+    `pretrained_load_audit.json`.
 
 - `env/environment-a100.yml` and `env/requirements-a100.lock`
   - A100 Miniconda environment lock.
@@ -74,6 +81,7 @@ checkpoint loading remains compatible with original NoPoSplat.
 
 ```bash
 scripts/create_a100_env.sh
+scripts/run_re10k_smoke.sh
 scripts/run_re10k_original_eval.sh
 scripts/run_re10k_olp_zeroshot.sh
 scripts/run_re10k_ft_control.sh
@@ -81,3 +89,7 @@ scripts/run_re10k_olp_ft.sh
 BASELINE_CKPT=/path/to/control.ckpt OLP_CKPT=/path/to/olp.ckpt \
   scripts/run_re10k_collect_stats.sh
 ```
+
+For baseline latent statistics, the scripts use `enabled=true` with
+`mix=0.0` and `target_mix=0.0`. This keeps the feature output unchanged while
+ensuring `latest_stats` is populated.

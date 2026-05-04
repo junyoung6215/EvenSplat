@@ -61,6 +61,13 @@ The full package lock is stored in `env/requirements-a100.lock`.
     - `olp_stats_summary.json`
     - `olp_stats_per_scene.json`
     - `olp_stats_per_scene.csv`
+  - Computes `floater_proxy` with either a fixed `tau_scale` or an adaptive
+    per-batch scale p95 threshold.
+
+- `src/misc/checkpoint_audit.py`
+  - Loads fine-tuning pretrained encoder weights through one helper.
+  - Prints and writes `pretrained_load_audit.json` with matched, missing, and
+    unexpected key counts.
 
 ### Thin Wiring Changes
 
@@ -83,6 +90,7 @@ The full package lock is stored in `env/requirements-a100.lock`.
 - `src/model/model_wrapper.py`
   - Logs OLP latent stats during training when available.
   - Writes evaluation stats only when `test.save_olp_stats=true`.
+  - Delegates threshold and serialization logic to `OlpEvalRecorder`.
 
 - `src/main.py`
   - Enables `save_last=True` for Lightning checkpoints.
@@ -117,6 +125,18 @@ model.encoder.orthogonal_preconditioner.seed=0
 model.encoder.orthogonal_preconditioner.collect_stats=true
 ```
 
+OLP stats thresholds:
+
+```yaml
+test.olp_tau_alpha: 0.95
+test.olp_tau_scale: null
+test.olp_tau_volume: null
+test.olp_adaptive_tau_scale_quantile: 0.95
+```
+
+When `test.olp_tau_scale` is `null`, `floater_proxy` uses the per-batch scale
+p95 threshold and records that threshold in the stats output.
+
 ## 5. Reproducible A100 Workflow
 
 Create and verify the environment:
@@ -126,7 +146,17 @@ scripts/create_a100_env.sh
 conda activate noposplat-olp-a100
 ```
 
-Run the experiment sequence:
+Run a small smoke test before the full experiment:
+
+```bash
+scripts/run_re10k_smoke.sh
+```
+
+This defaults to `BATCH_SIZE=1`, `MAX_STEPS=2`, and
+`CKPT_EVERY_N_STEPS=1`. It is intended to catch checkpoint loading, CUDA
+extension, OLP-H memory, and checkpoint writing problems before a long A100 run.
+
+Run the full experiment sequence:
 
 ```bash
 scripts/run_re10k_original_eval.sh
@@ -145,6 +175,10 @@ scripts/run_re10k_collect_stats.sh
 
 All outputs are under `outputs/olp_re10k/`.
 
+Baseline latent stats are collected by enabling the OLP-H module with
+`mix=0.0` and `target_mix=0.0`. This is identity-equivalent for the output, but
+it populates `latest_stats` so baseline and OLP latent outliers can be compared.
+
 ## 6. Saved Artifacts
 
 Each run is designed to save:
@@ -159,6 +193,8 @@ Each run is designed to save:
 - rendering metrics when available
 - OLP latent stats when enabled
 - Gaussian opacity/scale tail stats when enabled
+- `olp_seed.txt`, because OLP-H random buffers are `persistent=False`
+- `pretrained_load_audit.json` during fine-tuning runs
 
 ## 7. Validation Performed Locally
 
@@ -175,9 +211,11 @@ The unit test covers:
 
 - disabled preconditioner returns input exactly
 - Hadamard preconditioner preserves L2 norm at `mix=1`
+- identity-stats mode returns input and populates `latest_stats`
 - warm-up schedule moves from `mix` to `target_mix`
 - output shape equals input shape
 - stats helper functions return scalar metrics
+- Gaussian stats include `floater_proxy`
 
 ## 8. Not Yet Run
 
@@ -196,9 +234,15 @@ These require the A100 server, prepared RE10K dataset, and pretrained weights:
 The implementation keeps OLP-H modular:
 
 - To disable the experiment, keep `orthogonal_preconditioner.enabled=false`.
+- For baseline latent diagnostics, use `enabled=true`, `mix=0.0`, and
+  `target_mix=0.0`.
 - To replace Hadamard with another preconditioner, add a new module or mode in
   `build_latent_preconditioner`.
 - To add more metrics, extend `src/analysis/olp_stats.py` and keep collection in
   `OlpEvalRecorder`.
+- Use the same `OLP_SEED` for OLP fine-tuning and evaluation. The random
+  permutation/sign buffers intentionally stay out of checkpoints.
+- Set `OLP_TAU_SCALE` for fixed-threshold floater comparisons. If it is unset,
+  `floater_proxy` uses adaptive scale p95.
 - The original NoPoSplat README, dataset instructions, and citation are kept in
   the root `README.md`.

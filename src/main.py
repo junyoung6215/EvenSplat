@@ -13,7 +13,6 @@ from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.plugins.environments import SLURMEnvironment
 from omegaconf import DictConfig, OmegaConf
 
-from src.misc.weight_modify import checkpoint_filter_fn
 from src.model.distiller import get_distiller
 
 # Configure beartype and jaxtyping.
@@ -26,6 +25,7 @@ with install_import_hook(
     from src.global_cfg import set_cfg
     from src.loss import get_losses
     from src.misc.LocalLogger import LocalLogger
+    from src.misc.checkpoint_audit import load_encoder_pretrained_weights
     from src.misc.step_tracker import StepTracker
     from src.misc.wandb_tools import update_checkpoint_path
     from src.model.decoder import get_decoder
@@ -129,18 +129,12 @@ def train(cfg_dict: DictConfig):
 
     # Load the encoder weights.
     if cfg.model.encoder.pretrained_weights and cfg.mode == "train":
-        weight_path = cfg.model.encoder.pretrained_weights
-        ckpt_weights = torch.load(weight_path, map_location='cpu')
-        if 'model' in ckpt_weights:
-            ckpt_weights = ckpt_weights['model']
-            ckpt_weights = checkpoint_filter_fn(ckpt_weights, encoder)
-            missing_keys, unexpected_keys = encoder.load_state_dict(ckpt_weights, strict=False)
-        elif 'state_dict' in ckpt_weights:
-            ckpt_weights = ckpt_weights['state_dict']
-            ckpt_weights = {k[8:]: v for k, v in ckpt_weights.items() if k.startswith('encoder.')}
-            missing_keys, unexpected_keys = encoder.load_state_dict(ckpt_weights, strict=False)
-        else:
-            raise ValueError(f"Invalid checkpoint format: {weight_path}")
+        load_encoder_pretrained_weights(
+            encoder,
+            cfg.model.encoder.pretrained_weights,
+            output_dir / "pretrained_load_audit.json",
+            strict=False,
+        )
 
     model_wrapper = ModelWrapper(
         cfg.optimizer,

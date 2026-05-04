@@ -55,6 +55,7 @@ def gaussian_tail_stats(
     tau_alpha: float = 0.95,
     tau_scale: float | None = None,
     tau_volume: float | None = None,
+    adaptive_tau_scale_quantile: float | None = 0.95,
 ) -> dict[str, float]:
     """
     Compute opacity/scale tail statistics after GaussianAdapter.
@@ -65,6 +66,8 @@ def gaussian_tail_stats(
         tau_alpha: Opacity tail threshold.
         tau_scale: Optional max-scale tail threshold.
         tau_volume: Optional volume tail threshold.
+        adaptive_tau_scale_quantile: If tau_scale is not provided, use this
+            scale quantile as the threshold for scale_tail and floater_proxy.
     """
     opacity = _to_float_tensor(opacities).flatten()
     scale = _to_float_tensor(scales).reshape(-1, 3)
@@ -83,7 +86,14 @@ def gaussian_tail_stats(
         "volume_p99": _quantile(volume, 0.99),
     }
 
+    if tau_scale is None and adaptive_tau_scale_quantile is not None:
+        tau_scale = _quantile(scale_max, adaptive_tau_scale_quantile)
+        stats["scale_tail_threshold_source_quantile"] = float(
+            adaptive_tau_scale_quantile
+        )
+
     if tau_scale is not None:
+        stats["scale_tail_threshold"] = float(tau_scale)
         stats["scale_tail"] = float((scale_max > tau_scale).float().mean().cpu())
         stats["floater_proxy"] = float(
             ((opacity > tau_alpha) & (scale_max > tau_scale)).float().mean().cpu()

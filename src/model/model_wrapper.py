@@ -64,6 +64,10 @@ class TestCfg:
     save_video: bool
     save_compare: bool
     save_olp_stats: bool = False
+    olp_tau_alpha: float = 0.95
+    olp_tau_scale: float | None = None
+    olp_tau_volume: float | None = None
+    olp_adaptive_tau_scale_quantile: float | None = 0.95
 
 
 @dataclass
@@ -131,7 +135,12 @@ class ModelWrapper(LightningModule):
 
         # This is used for testing.
         self.benchmarker = Benchmarker()
-        self.olp_eval_recorder = OlpEvalRecorder()
+        self.olp_eval_recorder = OlpEvalRecorder(
+            tau_alpha=test_cfg.olp_tau_alpha,
+            tau_scale=test_cfg.olp_tau_scale,
+            tau_volume=test_cfg.olp_tau_volume,
+            adaptive_tau_scale_quantile=test_cfg.olp_adaptive_tau_scale_quantile,
+        )
 
     def training_step(self, batch, batch_idx):
         # combine batch from different dataloaders
