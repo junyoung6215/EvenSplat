@@ -94,6 +94,8 @@ The center/pts3d branch is unchanged.
 
 - For baseline latent stats, keep the module enabled but set `mix=0.0`,
   `target_mix=0.0`, and `collect_stats=true`.
+- `scripts/run_re10k_original_eval.sh` keeps OLP-H off for official
+  reproduction. Original reproduction and latent-stat collection are separated.
 - OLP-H buffers are `persistent=False`; use the same `OLP_SEED` for train and
   eval.
 - `floater_proxy` is emitted when a fixed `tau_scale` is provided or when the

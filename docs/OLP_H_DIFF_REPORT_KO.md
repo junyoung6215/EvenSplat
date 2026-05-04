@@ -93,6 +93,8 @@ center/pts3d branch는 변경하지 않았습니다.
 - baseline latent stats를 찍을 때는 OLP-H 모듈을 켜고 `mix=0.0`,
   `target_mix=0.0`, `collect_stats=true`로 둡니다. 출력은 identity와 같고
   latent stats만 수집됩니다.
+- `scripts/run_re10k_original_eval.sh`는 공식 재현용이므로 OLP-H를 끈
+  상태로 실행합니다. 원본 재현 run과 latent stats 수집 run을 구분합니다.
 - OLP-H sign/permutation buffer는 `persistent=False`입니다. 학습과 평가에서
   같은 `OLP_SEED`를 사용해야 같은 rotation이 재현됩니다.
 - `floater_proxy`는 fixed `tau_scale`을 주거나 adaptive scale quantile을
