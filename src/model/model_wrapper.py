@@ -281,15 +281,13 @@ class ModelWrapper(LightningModule):
         (scene,) = batch["scene"]
         name = get_cfg()["wandb"]["name"]
         path = self.test_cfg.output_path / name
-
         if self.test_cfg.save_olp_stats and visualization_dump is not None:
-            metrics = all_metrics if self.test_cfg.compute_scores else None
             self.olp_eval_recorder.record_test_batch(
                 self.encoder,
                 visualization_dump,
                 scene,
                 batch_idx,
-                metrics,
+                all_metrics if self.test_cfg.compute_scores else None,
             )
 
         if self.test_cfg.save_image:

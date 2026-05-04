@@ -11,6 +11,7 @@ from torch import Tensor, nn
 from .encoder_noposplat import EncoderNoPoSplatCfg
 from .backbone.croco.misc import transpose_to_landscape
 from .heads import head_factory
+from .heads.preconditioner_utils import set_preconditioner_step
 from ...dataset.shims.bounds_shim import apply_bounds_shim
 from ...dataset.shims.normalize_shim import apply_normalize_shim
 from ...dataset.shims.patch_shim import apply_patch_shim
@@ -137,21 +138,13 @@ class EncoderNoPoSplatMulti(Encoder[EncoderNoPoSplatCfg]):
         head = getattr(self, f'head{head_num}')
         return head(decout, img_shape, ray_embedding=ray_embedding)
 
-    def set_preconditioner_step(self, global_step: int):
-        for module in self.modules():
-            if module is self:
-                continue
-            set_step = getattr(module, "set_step", None)
-            if callable(set_step):
-                set_step(global_step)
-
     def forward(
         self,
         context: dict,
         global_step: int = 0,
         visualization_dump: Optional[dict] = None,
     ) -> Gaussians:
-        self.set_preconditioner_step(global_step)
+        set_preconditioner_step(self, global_step)
 
         device = context["image"].device
         b, v, _, h, w = context["image"].shape

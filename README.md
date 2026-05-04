@@ -1,83 +1,8 @@
-# Capstone Project: NoPoSplat OLP-H Experiment
-
-This repository is a capstone experimental fork of
-[cvg/NoPoSplat](https://github.com/cvg/NoPoSplat). The added experiment tests
-whether a fixed randomized Hadamard orthogonal latent preconditioner can
-stabilize Gaussian parameter prediction in the `dpt_gs` Gaussian head.
-
-## Current Experiment Version
-
-- Experiment version: `olp-h-mvp-a100-v0.1`
-- Date prepared: `2026-05-03 KST`
-- Base NoPoSplat commit: `a097a78c5bdd0486493f74abb1165614d86ae952`
-- Main implementation commit: `1ec448e906ef43c8a08138ebf2fac0784719d721`
-- Target runtime: A100, Miniconda, Python 3.10, CUDA 11.8
-- PyTorch stack: `torch==2.1.2+cu118`, `torchvision==0.16.2+cu118`,
-  `torchaudio==2.1.2+cu118`
-
-## What Was Added
-
-- Modular OLP-H implementation:
-  `src/model/encoder/heads/latent_preconditioner.py`
-- Thin `dpt_gs` Gaussian head hook:
-  `path_1 = self.preconditioner(path_1)` before the Gaussian output head
-- Config toggle:
-  `model.encoder.orthogonal_preconditioner.enabled=false` by default
-- A100 environment lock:
-  `env/environment-a100.yml`, `env/requirements-a100.lock`
-- Reproducible RE10K run scripts:
-  `scripts/run_re10k_original_eval.sh`,
-  `scripts/run_re10k_ft_control.sh`,
-  `scripts/run_re10k_olp_ft.sh`
-- OLP/Gaussian tail statistics:
-  `src/analysis/olp_stats.py`, `src/analysis/olp_eval_recorder.py`
-
-## Quick Start For The A100 Server
-
-```bash
-scripts/create_a100_env.sh
-conda activate noposplat-olp-a100
-
-scripts/run_re10k_smoke.sh
-scripts/run_re10k_original_eval.sh
-scripts/run_re10k_olp_zeroshot.sh
-scripts/run_re10k_ft_control.sh
-scripts/run_re10k_olp_ft.sh
-```
-
-After fine-tuning finishes, compare the saved checkpoints:
-
-```bash
-BASELINE_CKPT=/path/to/re10k_ft_control.ckpt \
-OLP_CKPT=/path/to/re10k_olp_ft.ckpt \
-scripts/run_re10k_collect_stats.sh
-```
-
-Outputs are written under `outputs/olp_re10k/`. The scripts also save command
-logs, git commit hashes, package fingerprints, and OLP statistics when enabled.
-
-Important experiment notes:
-
-- Run `scripts/run_re10k_smoke.sh` first on a single A100. It defaults to
-  `BATCH_SIZE=1` and `MAX_STEPS=2` to catch checkpoint, CUDA, and memory issues.
-- Baseline stats runs enable the OLP-H module with `mix=0` and `target_mix=0`.
-  This keeps the output identity-equivalent while still collecting latent stats.
-- OLP-H random sign/permutation buffers are `persistent=False`. Reuse the same
-  `OLP_SEED` for fine-tuning and evaluation.
-- If `test.olp_tau_scale=null`, floater proxy uses the per-batch scale p95 as
-  the adaptive threshold. Set `OLP_TAU_SCALE` for a fixed threshold.
-- Training runs write `pretrained_load_audit.json` so missing/unexpected
-  checkpoint keys are visible before a long fine-tuning run.
-
-## Documentation
-
-- Implementation map: [docs/OLP_H_MVP.md](docs/OLP_H_MVP.md)
-- Final change report: [docs/CAPSTONE_OLP_H_REPORT.md](docs/CAPSTONE_OLP_H_REPORT.md)
-
-The original NoPoSplat README is preserved below for installation, checkpoint,
-dataset, and citation details.
-
----
+> OLP-H capstone experiment docs:
+> [Korean README](README_OLP_H_KO.md),
+> [English README](README_OLP_H_EN.md),
+> [Korean diff report](docs/OLP_H_DIFF_REPORT_KO.md),
+> [English diff report](docs/OLP_H_DIFF_REPORT_EN.md).
 
 <p align="center">
   <h2 align="center">No Pose, No Problem <img src="https://noposplat.github.io/static/images/icon.svg" width="20" style="position: relative; top: 1px;"> <br> Surprisingly Simple 3D Gaussian Splats from Sparse Unposed Images</h2>

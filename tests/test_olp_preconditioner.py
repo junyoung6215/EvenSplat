@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import importlib.util
 import sys
+import types
 from pathlib import Path
 
 import torch
@@ -7,21 +10,48 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-olp_stats_spec = importlib.util.spec_from_file_location(
-    "olp_stats",
-    ROOT / "src/analysis/olp_stats.py",
-)
-olp_stats = importlib.util.module_from_spec(olp_stats_spec)
-assert olp_stats_spec.loader is not None
-olp_stats_spec.loader.exec_module(olp_stats)
+HEADS = ROOT / "src/model/encoder/heads"
 
-preconditioner_spec = importlib.util.spec_from_file_location(
-    "latent_preconditioner",
-    ROOT / "src/model/encoder/heads/latent_preconditioner.py",
+
+def _ensure_package(name: str, path: Path | None = None) -> None:
+    if name in sys.modules:
+        return
+    module = types.ModuleType(name)
+    module.__path__ = [] if path is None else [str(path)]
+    sys.modules[name] = module
+
+
+def _load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+_ensure_package("src", ROOT / "src")
+_ensure_package("src.model", ROOT / "src/model")
+_ensure_package("src.model.encoder", ROOT / "src/model/encoder")
+_ensure_package("src.model.encoder.heads", HEADS)
+
+_load_module(
+    "src.model.encoder.heads.preconditioner_cfg",
+    HEADS / "preconditioner_cfg.py",
 )
-preconditioner = importlib.util.module_from_spec(preconditioner_spec)
-assert preconditioner_spec.loader is not None
-preconditioner_spec.loader.exec_module(preconditioner)
+_load_module(
+    "src.model.encoder.heads.preconditioner_math",
+    HEADS / "preconditioner_math.py",
+)
+_load_module(
+    "src.model.encoder.heads.preconditioner_stats",
+    HEADS / "preconditioner_stats.py",
+)
+preconditioner = _load_module(
+    "src.model.encoder.heads.latent_preconditioner",
+    HEADS / "latent_preconditioner.py",
+)
+olp_stats = _load_module("olp_stats", ROOT / "src/analysis/olp_stats.py")
 
 gaussian_tail_stats = olp_stats.gaussian_tail_stats
 latent_tail_stats = olp_stats.latent_tail_stats

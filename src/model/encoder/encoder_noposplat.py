@@ -19,6 +19,8 @@ from ..types import Gaussians
 from .backbone import Backbone, BackboneCfg, get_backbone
 from .common.gaussian_adapter import GaussianAdapter, GaussianAdapterCfg, UnifiedGaussianAdapter
 from .encoder import Encoder
+from .heads.preconditioner_cfg import OrthogonalPreconditionerCfg
+from .heads.preconditioner_utils import set_preconditioner_step
 from .visualization.encoder_visualizer_epipolar_cfg import EncoderVisualizerEpipolarCfg
 
 
@@ -30,18 +32,6 @@ class OpacityMappingCfg:
     initial: float
     final: float
     warm_up: int
-
-
-@dataclass
-class OrthogonalPreconditionerCfg:
-    enabled: bool = False
-    mode: str = "hadamard"
-    dim: int = 256
-    mix: float = 0.0
-    target_mix: float = 1.0
-    warmup_steps: int = 5000
-    seed: int = 0
-    collect_stats: bool = False
 
 
 @dataclass
@@ -163,21 +153,13 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
         head = getattr(self, f'head{head_num}')
         return head(decout, img_shape, ray_embedding=ray_embedding)
 
-    def set_preconditioner_step(self, global_step: int):
-        for module in self.modules():
-            if module is self:
-                continue
-            set_step = getattr(module, "set_step", None)
-            if callable(set_step):
-                set_step(global_step)
-
     def forward(
         self,
         context: dict,
         global_step: int = 0,
         visualization_dump: Optional[dict] = None,
     ) -> Gaussians:
-        self.set_preconditioner_step(global_step)
+        set_preconditioner_step(self, global_step)
 
         device = context["image"].device
         b, v, _, h, w = context["image"].shape

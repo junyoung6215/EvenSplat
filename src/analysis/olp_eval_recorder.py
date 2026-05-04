@@ -94,7 +94,7 @@ class OlpEvalRecorder:
             {
                 key: value
                 for key, value in item.items()
-                if isinstance(value, (int, float))
+                if isinstance(value, (int, float)) and key != "batch_idx"
             }
             for item in serializable_stats
         ]
@@ -103,6 +103,15 @@ class OlpEvalRecorder:
             output_dir / "olp_stats_summary.json",
         )
         with (output_dir / "olp_stats_per_scene.csv").open("w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=serializable_stats[0].keys())
+            leading = ["scene", "batch_idx"]
+            fieldnames = leading + sorted(
+                {
+                    key
+                    for item in serializable_stats
+                    for key in item
+                    if key not in leading
+                }
+            )
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(serializable_stats)
