@@ -12,7 +12,34 @@ from .preconditioner_stats import summarize_latent_pair
 
 
 class RandomizedHadamardPreconditioner(nn.Module):
-    """Fixed randomized Hadamard preconditioner for BCHW latent feature maps."""
+    """Fixed randomized Hadamard preconditioner for BCHW latent feature maps.
+
+    For each pixel feature vector x in R^C, this module applies
+
+        Qx = H D P x / sqrt(C)
+
+    where P is a fixed channel permutation, D is a fixed random sign diagonal,
+    and H is the Walsh-Hadamard transform. The normalized transform is
+    orthogonal when C is a power of two, so it preserves L2 norm at mix=1. This
+    experiment uses the transform only as a Gaussian-head latent preconditioner:
+    no polar transform, quantization, clipping, or learnable rotation is used.
+
+    Recommended experiment settings:
+        - Disabled/default: enabled=False.
+        - Baseline latent stats: enabled=True, mix=0.0, target_mix=0.0,
+          warmup_steps=0, collect_stats=True.
+        - Zero-shot diagnostic: enabled=True, mix=1.0, target_mix=1.0,
+          warmup_steps=0.
+        - Fine-tuning: enabled=True, mix=0.0, target_mix=1.0,
+          warmup_steps=5000, seed=0.
+
+    The random permutation and sign buffers are persistent=False, so they are
+    intentionally not saved in checkpoints. Reuse the same seed for training
+    and evaluation when OLP-H is enabled.
+
+    Background:
+        https://en.wikipedia.org/wiki/Hadamard_transform
+    """
 
     def __init__(
         self,

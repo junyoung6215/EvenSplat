@@ -90,6 +90,10 @@ center/pts3d branch는 변경하지 않았습니다.
 
 ## 실험 시 주의할 점
 
+- `RandomizedHadamardPreconditioner`는 `Q = H D P / sqrt(C)`를 사용합니다.
+  `C`는 2의 거듭제곱이어야 하며, NoPoSplat `dpt_gs`의 기본 `C=256`은 이
+  조건을 만족합니다. Hadamard transform 배경은
+  https://en.wikipedia.org/wiki/Hadamard_transform 를 참고하면 됩니다.
 - baseline latent stats를 찍을 때는 OLP-H 모듈을 켜고 `mix=0.0`,
   `target_mix=0.0`, `collect_stats=true`로 둡니다. 출력은 identity와 같고
   latent stats만 수집됩니다.
@@ -101,3 +105,6 @@ center/pts3d branch는 변경하지 않았습니다.
   켜면 저장됩니다.
 - A100에서 먼저 `BATCH_SIZE=1`, `MAX_STEPS=2` smoke test로 메모리와
   checkpoint load를 확인하는 것을 권장합니다.
+- 단위테스트는 `tests/test_olp_preconditioner.py`에 있으며, disabled mode,
+  norm 보존, warm-up schedule, stats 수집, seed 재현성, checkpoint buffer
+  제외를 검증합니다.

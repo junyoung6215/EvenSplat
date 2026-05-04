@@ -92,6 +92,10 @@ The center/pts3d branch is unchanged.
 
 ## Important Reproducibility Notes
 
+- `RandomizedHadamardPreconditioner` uses `Q = H D P / sqrt(C)`. The channel
+  dimension must be a power of two; NoPoSplat `dpt_gs` uses `C=256`, which
+  satisfies this assumption. Background:
+  https://en.wikipedia.org/wiki/Hadamard_transform
 - For baseline latent stats, keep the module enabled but set `mix=0.0`,
   `target_mix=0.0`, and `collect_stats=true`.
 - `scripts/run_re10k_original_eval.sh` keeps OLP-H off for official
@@ -101,3 +105,6 @@ The center/pts3d branch is unchanged.
 - `floater_proxy` is emitted when a fixed `tau_scale` is provided or when the
   adaptive scale quantile is enabled.
 - Start A100 validation with `BATCH_SIZE=1` and `MAX_STEPS=2`.
+- Unit tests live in `tests/test_olp_preconditioner.py` and cover disabled
+  mode, norm preservation, warm-up scheduling, stats collection, seed
+  reproducibility, and checkpoint buffer exclusion.

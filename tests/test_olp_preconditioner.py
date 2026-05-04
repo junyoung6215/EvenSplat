@@ -56,6 +56,7 @@ olp_stats = _load_module("olp_stats", ROOT / "src/analysis/olp_stats.py")
 gaussian_tail_stats = olp_stats.gaussian_tail_stats
 latent_tail_stats = olp_stats.latent_tail_stats
 RandomizedHadamardPreconditioner = preconditioner.RandomizedHadamardPreconditioner
+build_latent_preconditioner = preconditioner.build_latent_preconditioner
 
 
 def test_disabled_returns_input_exactly():
@@ -64,6 +65,34 @@ def test_disabled_returns_input_exactly():
     y = module(x)
     assert y is x
     torch.testing.assert_close(y, x, rtol=0.0, atol=0.0)
+
+
+def test_disabled_can_collect_identity_stats():
+    x = torch.randn(2, 256, 4, 4)
+    module = RandomizedHadamardPreconditioner(
+        dim=256,
+        enabled=False,
+        collect_stats=True,
+    )
+    y = module(x)
+    assert y is x
+    assert module.latest_stats["effective_mix"] == 0.0
+    assert module.latest_stats["input_max_rms"] == module.latest_stats["output_max_rms"]
+    assert module.latest_stats["input_kurtosis"] == module.latest_stats["output_kurtosis"]
+
+
+def test_build_disabled_returns_identity_module():
+    module = build_latent_preconditioner({"enabled": False}, dim=256)
+    assert isinstance(module, torch.nn.Identity)
+
+
+def test_invalid_hadamard_dim_raises():
+    try:
+        RandomizedHadamardPreconditioner(dim=255)
+    except ValueError as exc:
+        assert "power of two" in str(exc)
+    else:
+        raise AssertionError("Expected non-power-of-two dim to raise ValueError")
 
 
 def test_norm_is_preserved_for_mix_one():
@@ -84,6 +113,39 @@ def test_norm_is_preserved_for_mix_one():
         rtol=1e-5,
         atol=1e-5,
     )
+
+
+def test_same_seed_reproduces_rotation():
+    x = torch.randn(2, 256, 4, 4)
+    module_a = RandomizedHadamardPreconditioner(
+        dim=256,
+        enabled=True,
+        mix=1.0,
+        target_mix=1.0,
+        warmup_steps=0,
+        seed=123,
+    )
+    module_b = RandomizedHadamardPreconditioner(
+        dim=256,
+        enabled=True,
+        mix=1.0,
+        target_mix=1.0,
+        warmup_steps=0,
+        seed=123,
+    )
+    torch.testing.assert_close(module_a(x), module_b(x), rtol=0.0, atol=0.0)
+
+
+def test_random_buffers_are_not_checkpoint_persistent():
+    module = RandomizedHadamardPreconditioner(
+        dim=256,
+        enabled=True,
+        mix=1.0,
+        target_mix=1.0,
+        warmup_steps=0,
+    )
+    assert "permutation" not in module.state_dict()
+    assert "signs" not in module.state_dict()
 
 
 def test_identity_stats_mode_collects_stats():
@@ -149,7 +211,12 @@ def test_stats_helpers_return_scalars():
 
 if __name__ == "__main__":
     test_disabled_returns_input_exactly()
+    test_disabled_can_collect_identity_stats()
+    test_build_disabled_returns_identity_module()
+    test_invalid_hadamard_dim_raises()
     test_norm_is_preserved_for_mix_one()
+    test_same_seed_reproduces_rotation()
+    test_random_buffers_are_not_checkpoint_persistent()
     test_identity_stats_mode_collects_stats()
     test_warmup_mix_schedule()
     test_output_shape_equals_input_shape()
