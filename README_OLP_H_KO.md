@@ -7,6 +7,7 @@ config 전달과 head 호출을 위한 얇은 연결부만 있습니다.
 중요 문서:
 
 - 한글 실험 프로토콜: `docs/OLP_H_EXPERIMENT_PROTOCOL_KO.md`
+- 서버 실행 runbook: `docs/SERVER_RUNBOOK_KO.md`
 - 한글 변경 보고서: `docs/OLP_H_DIFF_REPORT_KO.md`
 - 영어 변경 보고서: `docs/OLP_H_DIFF_REPORT_EN.md`
 - CUDA 11.8 package lock: `env/requirements-cuda118.lock`
@@ -29,6 +30,22 @@ scripts/run_re10k_original_eval.sh
 scripts/run_re10k_ft_control.sh
 scripts/run_re10k_olp_ft.sh
 ```
+
+공유 서버에서 env 이름을 분리하려면 다음처럼 실행합니다.
+
+```bash
+ENV_NAME=noposplat-olp-cuda118-slot0 \
+bash scripts/create_cuda118_env.sh
+
+conda activate noposplat-olp-cuda118-slot0
+```
+
+`scripts/create_cuda118_env.sh`는 서버 검증 중 확인된 CUDA extension 빌드 조건을
+반영합니다. PyTorch `2.1.2+cu118`을 먼저 설치하고,
+`diff_gaussian_rasterization`을 CUDA 11.8 nvcc, CUDA 11.8 header, gcc-11
+조건에서 별도로 빌드한 뒤, 나머지 lock package는 `--no-deps`로 설치합니다.
+이는 `e3nn==0.6.0`의 metadata가 `torch>=2.2.0`을 요구해도 torch pin을
+바꾸지 않기 위한 처리입니다.
 
 fine-tuning 이후 비교:
 

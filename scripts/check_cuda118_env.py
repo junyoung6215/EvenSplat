@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import importlib.metadata as metadata
 import json
+import os
 import platform
 import re
 import subprocess
@@ -95,6 +96,9 @@ def main() -> None:
         write_artifact(output_dir / "pip_freeze.txt", [sys.executable, "-m", "pip", "freeze"])
         write_artifact(output_dir / "conda_explicit.txt", ["conda", "list", "--explicit"])
         write_artifact(output_dir / "nvidia_smi.txt", ["nvidia-smi"])
+        write_artifact(output_dir / "nvcc_version.txt", ["nvcc", "--version"])
+        write_artifact(output_dir / "gcc_version.txt", ["gcc", "--version"])
+        write_artifact(output_dir / "gxx_version.txt", ["g++", "--version"])
 
     code, gpu_query = run_command(
         [
@@ -106,16 +110,47 @@ def main() -> None:
     cuda_available = torch.cuda.is_available()
     gpu_names = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
     pin_mismatches = check_pins(args.requirements)
+    nvcc_code, nvcc_output = run_command(["nvcc", "--version"])
+    gcc_code, gcc_output = run_command(["gcc", "--version"])
+    gxx_code, gxx_output = run_command(["g++", "--version"])
+    conda_prefix = os.environ.get("CONDA_PREFIX", "")
+    cuda_type_traits = (
+        Path(conda_prefix) / "include" / "cuda" / "std" / "type_traits"
+        if conda_prefix
+        else Path()
+    )
+    dgr_import_ok = True
+    dgr_import_error = ""
+    try:
+        import diff_gaussian_rasterization  # noqa: F401
+    except Exception as exc:  # pragma: no cover - diagnostic path
+        dgr_import_ok = False
+        dgr_import_error = repr(exc)
 
     report = {
         "python": sys.version,
         "platform": platform.platform(),
+        "conda_prefix": conda_prefix,
+        "cuda_home": os.environ.get("CUDA_HOME", ""),
+        "cuda_path": os.environ.get("CUDA_PATH", ""),
+        "cc": os.environ.get("CC", ""),
+        "cxx": os.environ.get("CXX", ""),
         "torch": torch.__version__,
         "torch_cuda": torch.version.cuda,
         "cuda_available": cuda_available,
         "gpu_count": torch.cuda.device_count(),
         "gpu_names": gpu_names,
         "required_gpu_name": args.require_gpu_name,
+        "nvcc_exit_code": nvcc_code,
+        "nvcc_version": nvcc_output,
+        "gcc_exit_code": gcc_code,
+        "gcc_version": gcc_output.splitlines()[0] if gcc_output else "",
+        "gxx_exit_code": gxx_code,
+        "gxx_version": gxx_output.splitlines()[0] if gxx_output else "",
+        "cuda_type_traits_path": str(cuda_type_traits),
+        "cuda_type_traits_exists": cuda_type_traits.exists(),
+        "diff_gaussian_rasterization_import_ok": dgr_import_ok,
+        "diff_gaussian_rasterization_import_error": dgr_import_error,
         "nvidia_smi_query_exit_code": code,
         "nvidia_smi_query": gpu_query,
         "pin_mismatches": pin_mismatches,
@@ -133,6 +168,14 @@ def main() -> None:
         failures.append(f"torch.version.cuda {torch.version.cuda} != {EXPECTED_CUDA}")
     if not cuda_available:
         failures.append("torch.cuda.is_available() is false")
+    if nvcc_code != 0:
+        failures.append("nvcc --version failed")
+    if "release 11.8" not in nvcc_output:
+        failures.append("nvcc is not CUDA 11.8")
+    if not cuda_type_traits.exists():
+        failures.append(f"CUDA C++ header missing: {cuda_type_traits}")
+    if not dgr_import_ok:
+        failures.append(f"diff_gaussian_rasterization import failed: {dgr_import_error}")
     if args.require_gpu_name and not any(args.require_gpu_name in name for name in gpu_names):
         failures.append(f"No GPU name contains {args.require_gpu_name!r}: {gpu_names}")
     failures.extend(pin_mismatches)

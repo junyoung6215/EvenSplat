@@ -3,6 +3,9 @@
 이 문서는 NoPoSplat OLP-H 실험을 CUDA 11.8 서버 환경에서 재현 가능하게 실행하기 위한
 실행 순서와 예상 산출물을 정리한 문서입니다.
 
+서버 접속, tmux, conda 활성화, 재접속, 백업 명령어는
+`docs/SERVER_RUNBOOK_KO.md`에 따로 정리했습니다.
+
 목표 비교는 다음입니다.
 
 ```text
@@ -169,6 +172,12 @@ cd /Users/kwon_junyoung/Desktop/4rd_1st/캡스톤디자ᄋ�
 - evaluation index: `assets/evaluation_index_re10k.json`
 - 기본 OLP seed: `OLP_SEED=0`
 
+주의: `pretrained_weights/re10k.ckpt`는 모델 가중치이고, RE10K 데이터셋은
+별도로 필요합니다. 데이터셋은 `datasets/re10k/train/*.torch`,
+`datasets/re10k/test/*.torch`, 각 split의 `index.json`을 포함한 processed
+torch chunk 형식이어야 합니다. 서버에서 데이터셋을 연결하거나 archive URL에서
+받을 때는 `scripts/setup_re10k_dataset.sh`를 사용합니다.
+
 `OLP_SEED`는 학습과 평가에서 반드시 동일하게 유지합니다. OLP-H의 random
 permutation/sign buffer는 `persistent=False`라 checkpoint에 저장되지 않기
 때문입니다.
@@ -222,6 +231,26 @@ conda activate noposplat-olp-cuda118
 python scripts/check_cuda118_env.py --output-dir outputs/olp_re10k/env_check
 ```
 
+공유 서버에서 환경 이름을 분리하려면 다음처럼 실행합니다.
+
+```bash
+ENV_NAME=noposplat-olp-cuda118-slot0 \
+bash scripts/create_cuda118_env.sh
+
+conda activate noposplat-olp-cuda118-slot0
+```
+
+환경 생성 스크립트는 서버에서 확인한 빌드 조건을 포함합니다.
+
+- `torch==2.1.2+cu118`를 먼저 설치.
+- CUDA extension 빌드용 `cuda-nvcc=11.8`, `cuda-cudart-dev=11.8`,
+  `cuda-cccl=11.8` 설치.
+- `diff_gaussian_rasterization`을 별도 빌드.
+- `e3nn==0.6.0`의 `torch>=2.2.0` metadata 충돌을 피하기 위해 torch /
+  torchvision / torchaudio / diff Gaussian 줄을 제외한 lock package를
+  `--no-deps`로 설치.
+- gcc-11 / g++-11이 없고 root + apt 환경이면 자동 설치.
+
 예상 산출물:
 
 ```text
@@ -230,14 +259,19 @@ outputs/olp_re10k/env_check/
   pip_freeze.txt
   conda_explicit.txt
   nvidia_smi.txt
+  nvcc_version.txt
+  gcc_version.txt
+  gxx_version.txt
 ```
 
 확인할 항목:
 
 - `torch.__version__ == "2.1.2+cu118"`
 - `torch.version.cuda == "11.8"`
+- `nvcc --version`에 `release 11.8` 포함
 - `torch.cuda.is_available() == true`
 - GPU가 PyTorch에서 인식됨
+- `diff_gaussian_rasterization` import 가능
 - pinned package mismatch 없음
 
 ## 3. Smoke Run

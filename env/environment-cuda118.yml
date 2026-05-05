@@ -7,3 +7,6 @@ dependencies:
   - python=3.10
   - pip
   - cuda-toolkit=11.8
+  - cuda-nvcc=11.8
+  - cuda-cudart-dev=11.8
+  - cuda-cccl=11.8

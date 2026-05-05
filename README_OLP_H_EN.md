@@ -29,6 +29,21 @@ scripts/run_re10k_ft_control.sh
 scripts/run_re10k_olp_ft.sh
 ```
 
+Use a slot-specific environment name on shared servers:
+
+```bash
+ENV_NAME=noposplat-olp-cuda118-slot0 \
+bash scripts/create_cuda118_env.sh
+
+conda activate noposplat-olp-cuda118-slot0
+```
+
+`scripts/create_cuda118_env.sh` reflects the server-side CUDA extension fixes:
+install PyTorch `2.1.2+cu118` first, build `diff_gaussian_rasterization`
+with CUDA 11.8 nvcc/header and gcc-11, then install the remaining locked
+packages with `--no-deps`. This preserves the torch pin even though
+`e3nn==0.6.0` advertises `torch>=2.2.0` in package metadata.
+
 After fine-tuning:
 
 ```bash
