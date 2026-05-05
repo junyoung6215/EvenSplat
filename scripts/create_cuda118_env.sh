@@ -11,6 +11,7 @@ INSTALL_SYSTEM_BUILD_DEPS="${INSTALL_SYSTEM_BUILD_DEPS:-1}"
 COMPILE_ROPE="${COMPILE_ROPE:-1}"
 TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-8.0}"
 MAX_JOBS="${MAX_JOBS:-4}"
+CUDA_CONDA_CHANNEL="${CUDA_CONDA_CHANNEL:-nvidia/label/cuda-11.8.0}"
 
 if ! command -v conda >/dev/null 2>&1; then
   echo "conda is required. Install Miniconda or load it on the server." >&2
@@ -41,7 +42,11 @@ set +u
 conda activate "${ENV_NAME}"
 set -u
 
-conda install -y -c nvidia cuda-toolkit=11.8 cuda-nvcc=11.8 cuda-cudart-dev=11.8 cuda-cccl=11.8
+conda install -y -c "${CUDA_CONDA_CHANNEL}" \
+  cuda-version=11.8 \
+  cuda-nvcc=11.8 \
+  cuda-cudart-dev=11.8 \
+  cuda-cccl=11.8
 
 export CUDA_HOME="${CONDA_PREFIX}"
 export CUDA_PATH="${CONDA_PREFIX}"

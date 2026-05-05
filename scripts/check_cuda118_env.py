@@ -73,6 +73,12 @@ def write_artifact(path: Path, command: list[str]) -> None:
         path.write_text(output + f"\n[exit_code={code}]\n")
 
 
+def find_paths(root: Path, pattern: str) -> list[str]:
+    if not root.exists():
+        return []
+    return [str(path) for path in root.glob(pattern)]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -121,8 +127,15 @@ def main() -> None:
     )
     dgr_import_ok = True
     dgr_import_error = ""
+    dgr_extension_path = ""
+    dgr_ldd_exit_code = 0
+    dgr_ldd_output = ""
     try:
         import diff_gaussian_rasterization  # noqa: F401
+        import diff_gaussian_rasterization._C as dgr_extension
+
+        dgr_extension_path = dgr_extension.__file__
+        dgr_ldd_exit_code, dgr_ldd_output = run_command(["ldd", dgr_extension_path])
     except Exception as exc:  # pragma: no cover - diagnostic path
         dgr_import_ok = False
         dgr_import_error = repr(exc)
@@ -159,8 +172,14 @@ def main() -> None:
         "cuda_type_traits_exists": cuda_type_traits.exists(),
         "diff_gaussian_rasterization_import_ok": dgr_import_ok,
         "diff_gaussian_rasterization_import_error": dgr_import_error,
+        "diff_gaussian_rasterization_extension_path": dgr_extension_path,
+        "diff_gaussian_rasterization_ldd_exit_code": dgr_ldd_exit_code,
+        "diff_gaussian_rasterization_ldd": dgr_ldd_output,
         "cv2_import_ok": cv2_import_ok,
         "cv2_import_error": cv2_import_error,
+        "conda_lib_cudart12": find_paths(Path(conda_prefix) / "lib", "libcudart.so.12*")
+        if conda_prefix
+        else [],
         "nvidia_smi_query_exit_code": code,
         "nvidia_smi_query": gpu_query,
         "pin_mismatches": pin_mismatches,
@@ -186,6 +205,14 @@ def main() -> None:
         failures.append(f"CUDA C++ header missing: {cuda_type_traits}")
     if not dgr_import_ok:
         failures.append(f"diff_gaussian_rasterization import failed: {dgr_import_error}")
+    if dgr_import_ok and dgr_ldd_exit_code != 0:
+        failures.append("ldd failed for diff_gaussian_rasterization extension")
+    if dgr_import_ok and "not found" in dgr_ldd_output:
+        failures.append("diff_gaussian_rasterization extension has unresolved shared libraries")
+    if dgr_import_ok and "libcudart.so.12" in dgr_ldd_output:
+        failures.append("diff_gaussian_rasterization links against CUDA 12 runtime")
+    if conda_prefix and find_paths(Path(conda_prefix) / "lib", "libcudart.so.12*"):
+        failures.append("CONDA_PREFIX/lib contains CUDA 12 libcudart; use a clean CUDA 11.8 env")
     if not cv2_import_ok:
         failures.append(f"cv2 import failed: {cv2_import_error}")
     if args.require_gpu_name and not any(args.require_gpu_name in name for name in gpu_names):
