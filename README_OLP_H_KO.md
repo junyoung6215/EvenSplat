@@ -54,6 +54,9 @@ nohup bash scripts/run_re10k_pilot_overnight.sh \
   > outputs/olp_re10k/pilot_overnight_nohup.log 2>&1 &
 ```
 
+`scripts/run_re10k_pilot_overnight.sh`는 `pretrained_weights/re10k.ckpt`가
+없으면 시작 전에 Hugging Face official checkpoint를 자동 다운로드합니다.
+
 pilot에서 직접 확인 후 OLP-H fine-tuning부터 자동 실행:
 
 ```bash

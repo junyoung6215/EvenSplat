@@ -30,6 +30,20 @@ Run 3: official NoPoSplat re10k.ckpt -> OLP-H fine-tuning
 `same-budget FT control 대비 OLP-H의 순수 효과`라고 주장하려면 이후
 baseline FT control을 추가로 돌려야 합니다.
 
+서버에 `pretrained_weights/re10k.ckpt`가 없을 수 있으므로, pilot wrapper는
+시작 전에 official checkpoint를 자동 다운로드합니다.
+
+```bash
+bash scripts/download_re10k_checkpoint.sh
+```
+
+수동으로 먼저 확인하고 싶으면 위 명령을 실행한 뒤 아래 파일이 생겼는지
+확인합니다.
+
+```text
+pretrained_weights/re10k.ckpt
+```
+
 처음부터 밤새 pilot 전체를 자동 실행하려면 아래 명령을 사용합니다.
 
 ```bash
@@ -86,6 +100,10 @@ ignore: 그 외
 
 이미지 해상도는 `+experiment=re10k`와 `config/dataset/re10k.yaml` 기준으로
 `256x256`입니다.
+
+내일까지의 간단한 pilot 보고에서는 overlap별 해석은 선택 사항입니다. 우선
+`olp_stats_summary.json`, PSNR/SSIM/LPIPS, representative render image,
+latent/opacity/scale/floater 평균 tail stats만 확인해도 충분합니다.
 
 controlled comparison까지 밤새 자동 실행하려면 아래 wrapper를 사용합니다.
 

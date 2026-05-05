@@ -17,4 +17,8 @@ export FINAL_SAVE_IMAGE="${FINAL_SAVE_IMAGE:-true}"
 export BASELINE_EVAL_NAME="${BASELINE_EVAL_NAME:-re10k_official_eval_stats}"
 export OLP_EVAL_NAME="${OLP_EVAL_NAME:-re10k_olp_ft_eval}"
 
+if [[ "${DOWNLOAD_RE10K:-1}" == "1" ]]; then
+  CHECKPOINT_PATH="${BASELINE_CKPT}" scripts/download_re10k_checkpoint.sh
+fi
+
 exec scripts/run_re10k_overnight_protocol.sh
