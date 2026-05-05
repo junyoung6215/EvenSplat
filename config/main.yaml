@@ -71,6 +71,7 @@ seed: 111123
 trainer:
   max_steps: -1
   val_check_interval: 250
+  num_sanity_val_steps: 2
   gradient_clip_val: 0.5
   num_nodes: 1
 

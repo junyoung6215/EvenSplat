@@ -111,6 +111,7 @@ def train(cfg_dict: DictConfig):
         ),
         callbacks=callbacks,
         val_check_interval=cfg.trainer.val_check_interval,
+        num_sanity_val_steps=cfg.trainer.num_sanity_val_steps,
         check_val_every_n_epoch=None,
         enable_progress_bar=False,
         gradient_clip_val=cfg.trainer.gradient_clip_val,
