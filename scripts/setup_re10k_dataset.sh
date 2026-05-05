@@ -46,12 +46,14 @@ verify_re10k() {
     fi
   done
 
-  if ! find "${root}/train" -maxdepth 1 -name "*.torch" -type f | head -1 | grep -q .; then
+  # Some download paths, including Hugging Face local-dir workflows, may expose
+  # chunk files as symlinks to a cache. Treat symlinked chunks as valid.
+  if ! find -L "${root}/train" -maxdepth 1 -name "*.torch" -type f | head -1 | grep -q .; then
     echo "Missing train torch chunks: ${root}/train/*.torch" >&2
     missing=1
   fi
 
-  if ! find "${root}/test" -maxdepth 1 -name "*.torch" -type f | head -1 | grep -q .; then
+  if ! find -L "${root}/test" -maxdepth 1 -name "*.torch" -type f | head -1 | grep -q .; then
     echo "Missing test torch chunks: ${root}/test/*.torch" >&2
     missing=1
   fi
