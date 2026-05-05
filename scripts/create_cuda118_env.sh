@@ -21,7 +21,7 @@ if [[ "${INSTALL_SYSTEM_BUILD_DEPS}" == "1" ]]; then
   if ! command -v gcc-11 >/dev/null 2>&1 || ! command -v g++-11 >/dev/null 2>&1; then
     if [[ "${EUID}" -eq 0 && -x "$(command -v apt-get)" ]]; then
       apt-get update
-      apt-get install -y build-essential gcc-11 g++-11
+      apt-get install -y build-essential gcc-11 g++-11 libgl1 libglib2.0-0
     else
       echo "gcc-11/g++-11 are required for CUDA 11.8 extension builds." >&2
       echo "Install them or rerun with CC/CXX pointing to a supported compiler." >&2
