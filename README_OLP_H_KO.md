@@ -38,6 +38,35 @@ OLP_CKPT=/path/to/re10k_olp_ft.ckpt \
 scripts/run_re10k_collect_stats.sh
 ```
 
+밤새 자동 실행:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 BATCH_SIZE=8 \
+nohup bash scripts/run_re10k_overnight_protocol.sh \
+  > outputs/olp_re10k/overnight_nohup.log 2>&1 &
+```
+
+직접 확인 후 fine-tuning부터 자동 실행:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 START_STAGE=4 BATCH_SIZE=8 \
+nohup bash scripts/run_re10k_overnight_protocol.sh \
+  > outputs/olp_re10k/overnight_nohup.log 2>&1 &
+```
+
+동일 조건의 baseline FT checkpoint가 이미 있으면:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 START_STAGE=5 \
+BASELINE_CKPT=/path/to/baseline_ft_control_last.ckpt \
+BATCH_SIZE=8 \
+nohup bash scripts/run_re10k_overnight_protocol.sh \
+  > outputs/olp_re10k/overnight_nohup.log 2>&1 &
+```
+
+자세한 실행 순서와 산출물은 `docs/OLP_H_EXPERIMENT_PROTOCOL_KO.md`를
+확인합니다.
+
 ## OLP-H 핵심 설정
 
 `RandomizedHadamardPreconditioner`는 Gaussian parameter head 직전 feature

@@ -15,6 +15,50 @@ NoPoSplat + OLP-H + FT
 유지하고 `BATCH_SIZE=4`로 낮춥니다. Smoke run은 반드시 full run 전에 먼저
 실행합니다.
 
+밤새 자동 실행하려면 아래 wrapper를 사용합니다.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 BATCH_SIZE=8 \
+nohup bash scripts/run_re10k_overnight_protocol.sh \
+  > outputs/olp_re10k/overnight_nohup.log 2>&1 &
+```
+
+실행 상태는 다음 파일에서 확인합니다.
+
+```text
+outputs/olp_re10k/overnight/<SESSION_ID>/manifest.txt
+outputs/olp_re10k/overnight/<SESSION_ID>/logs/*.log
+```
+
+처음 2~3시간은 직접 확인하고 이후만 자동으로 돌릴 수도 있습니다. 이 경우
+환경 검증, smoke, original eval, zero-shot까지 직접 확인한 뒤 아래처럼
+fine-tuning부터 실행합니다.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+START_STAGE=4 \
+BATCH_SIZE=8 \
+nohup bash scripts/run_re10k_overnight_protocol.sh \
+  > outputs/olp_re10k/overnight_nohup.log 2>&1 &
+```
+
+이미 동일 조건의 baseline FT checkpoint가 있다면 baseline FT는 다시 돌리지
+않고 OLP-H FT부터 시작할 수 있습니다.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+START_STAGE=5 \
+BASELINE_CKPT=/path/to/baseline_ft_control_last.ckpt \
+BATCH_SIZE=8 \
+nohup bash scripts/run_re10k_overnight_protocol.sh \
+  > outputs/olp_re10k/overnight_nohup.log 2>&1 &
+```
+
+단, `BASELINE_CKPT`가 단순 official `re10k.ckpt`라면 main comparison의
+baseline FT control을 대체하지는 못합니다. OLP-H 모델만 추가 fine-tuning을
+받으면 성능 차이가 OLP-H 때문인지 추가 학습 때문인지 분리할 수 없기
+때문입니다.
+
 ## 0. 공통 전제
 
 저장소 위치:
@@ -151,6 +195,83 @@ outputs/olp_re10k/smoke/<RUN_ID>/
 - smoke run에서 CUDA error가 발생하면 full fine-tuning으로 넘어가지 않습니다.
 - `pretrained_load_audit.json`에서 matched key 수가 0이면 checkpoint load 문제를
   먼저 해결합니다.
+
+## 3.1. 밤새 자동 실행 Wrapper
+
+아래 명령은 환경 검증부터 final eval까지 순서대로 실행합니다. 중간 단계가
+실패하면 즉시 멈추고 해당 단계 log를 남깁니다.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+BATCH_SIZE=8 \
+MAX_STEPS=18751 \
+LR=2e-4 \
+OLP_SEED=0 \
+nohup bash scripts/run_re10k_overnight_protocol.sh \
+  > outputs/olp_re10k/overnight_nohup.log 2>&1 &
+```
+
+기본값:
+
+- `CUDA_VISIBLE_DEVICES=0`
+- `START_STAGE=0`
+- `END_STAGE=6`
+- `SMOKE_BATCH_SIZE=1`
+- `BATCH_SIZE=8`
+- `MAX_STEPS=18751`
+- `LR=2e-4`
+- `CKPT_EVERY_N_STEPS=5000`
+- `OLP_WARMUP_STEPS=5000`
+- `FINAL_SAVE_IMAGE=true`
+- `OLP_SEED=0`
+
+stage 번호:
+
+- `0`: A100 environment check
+- `1`: smoke run
+- `2`: original RE10K eval
+- `3`: OLP zero-shot diagnostic
+- `4`: baseline FT control
+- `5`: OLP-H FT
+- `6`: final eval + tail stats
+
+이미 있는 checkpoint 재사용:
+
+- `BASELINE_CKPT=/path/to/baseline.ckpt`: stage 4를 건너뛰고 이 checkpoint를
+  final eval baseline으로 사용합니다.
+- `OLP_CKPT=/path/to/olp.ckpt`: stage 5를 건너뛰고 이 checkpoint를 final eval
+  OLP-H 모델로 사용합니다.
+
+자동 실행 산출물:
+
+```text
+outputs/olp_re10k/overnight/<SESSION_ID>/
+  manifest.txt
+  run_config.env
+  env_check/
+  logs/
+    00_env_check.log
+    01_smoke.log
+    02_original_eval.log
+    03_olp_zeroshot.log
+    04_ft_control.log
+    05_olp_ft.log
+    06_collect_stats.log
+```
+
+현재 진행 상황 확인:
+
+```bash
+tail -f outputs/olp_re10k/overnight/<SESSION_ID>/manifest.txt
+```
+
+전체 nohup log 확인:
+
+```bash
+tail -f outputs/olp_re10k/overnight_nohup.log
+```
+
+OOM이 나면 같은 명령에서 `BATCH_SIZE=4`로 낮춰 다시 실행합니다.
 
 ## 4. Run 0: Original RE10K Evaluation
 
@@ -481,4 +602,3 @@ warm-up / LR / freeze policy를 재조정해야 함
 - [ ] final eval에서 `SAVE_IMAGE=true`로 reconstruction image 저장
 - [ ] baseline/OLP `olp_stats_summary.json` 비교
 - [ ] `OLP_SEED`가 train/eval에서 동일한지 확인
-
