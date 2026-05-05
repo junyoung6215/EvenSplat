@@ -15,7 +15,64 @@ NoPoSplat + OLP-H + FT
 유지하고 `BATCH_SIZE=4`로 낮춥니다. Smoke run은 반드시 full run 전에 먼저
 실행합니다.
 
-밤새 자동 실행하려면 아래 wrapper를 사용합니다.
+## 내일까지 결과 제출용 Pilot Protocol
+
+시간이 부족한 경우 오늘 실행할 우선순위는 아래 3개 비교입니다.
+
+```text
+Run 0: official NoPoSplat re10k.ckpt
+Run 1: official NoPoSplat re10k.ckpt + OLP-H zero-shot
+Run 3: official NoPoSplat re10k.ckpt -> OLP-H fine-tuning
+```
+
+이 pilot은 baseline FT control을 생략합니다. 따라서 결과 해석은
+`official pretrained baseline 대비 OLP-H adaptation 결과`로 제한합니다.
+`same-budget FT control 대비 OLP-H의 순수 효과`라고 주장하려면 이후
+baseline FT control을 추가로 돌려야 합니다.
+
+처음부터 밤새 pilot 전체를 자동 실행하려면 아래 명령을 사용합니다.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 BATCH_SIZE=8 \
+nohup bash scripts/run_re10k_pilot_overnight.sh \
+  > outputs/olp_re10k/pilot_overnight_nohup.log 2>&1 &
+```
+
+처음 2~3시간 동안 환경 검증, smoke, original eval, zero-shot을 직접 확인한 뒤
+OLP-H fine-tuning부터 자동 실행하려면 아래 명령을 사용합니다.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+START_STAGE=5 \
+BASELINE_CKPT=./pretrained_weights/re10k.ckpt \
+BASELINE_EVAL_NAME=re10k_official_eval_stats \
+OLP_EVAL_NAME=re10k_olp_ft_eval \
+BATCH_SIZE=8 \
+nohup bash scripts/run_re10k_overnight_protocol.sh \
+  > outputs/olp_re10k/pilot_overnight_nohup.log 2>&1 &
+```
+
+pilot final eval 산출물:
+
+```text
+outputs/olp_re10k/re10k_official_eval_stats/
+  benchmark.json
+  peak_memory.json
+  olp_stats_summary.json
+  olp_stats_per_scene.json
+  olp_stats_per_scene.csv
+  <scene>/color/*.png
+
+outputs/olp_re10k/re10k_olp_ft_eval/
+  benchmark.json
+  peak_memory.json
+  olp_stats_summary.json
+  olp_stats_per_scene.json
+  olp_stats_per_scene.csv
+  <scene>/color/*.png
+```
+
+controlled comparison까지 밤새 자동 실행하려면 아래 wrapper를 사용합니다.
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 BATCH_SIZE=8 \
@@ -54,10 +111,10 @@ nohup bash scripts/run_re10k_overnight_protocol.sh \
   > outputs/olp_re10k/overnight_nohup.log 2>&1 &
 ```
 
-단, `BASELINE_CKPT`가 단순 official `re10k.ckpt`라면 main comparison의
-baseline FT control을 대체하지는 못합니다. OLP-H 모델만 추가 fine-tuning을
-받으면 성능 차이가 OLP-H 때문인지 추가 학습 때문인지 분리할 수 없기
-때문입니다.
+단, `BASELINE_CKPT=./pretrained_weights/re10k.ckpt`를 쓰는 경우는 내일까지
+결과 제출용 pilot입니다. main controlled comparison의 baseline FT control을
+대체하지는 못합니다. OLP-H 모델만 추가 fine-tuning을 받으면 성능 차이가
+OLP-H 때문인지 추가 학습 때문인지 분리할 수 없기 때문입니다.
 
 ## 0. 공통 전제
 

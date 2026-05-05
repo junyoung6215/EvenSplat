@@ -26,6 +26,8 @@ EXTERNAL_BASELINE_CKPT="${BASELINE_CKPT:-}"
 EXTERNAL_OLP_CKPT="${OLP_CKPT:-}"
 BASELINE_CKPT_PATH="${BASELINE_CKPT:-${BASELINE_RUN_DIR}/checkpoints/last.ckpt}"
 OLP_CKPT_PATH="${OLP_CKPT:-${OLP_RUN_DIR}/checkpoints/last.ckpt}"
+BASELINE_EVAL_NAME="${BASELINE_EVAL_NAME:-re10k_ft_control_eval}"
+OLP_EVAL_NAME="${OLP_EVAL_NAME:-re10k_olp_ft_eval}"
 
 MANIFEST="${ROOT_DIR}/manifest.txt"
 
@@ -90,6 +92,8 @@ EXTERNAL_BASELINE_CKPT=${EXTERNAL_BASELINE_CKPT}
 EXTERNAL_OLP_CKPT=${EXTERNAL_OLP_CKPT}
 BASELINE_CKPT_PATH=${BASELINE_CKPT_PATH}
 OLP_CKPT_PATH=${OLP_CKPT_PATH}
+BASELINE_EVAL_NAME=${BASELINE_EVAL_NAME}
+OLP_EVAL_NAME=${OLP_EVAL_NAME}
 EOF
 
 log_manifest "OLP-H overnight protocol started"
@@ -206,6 +210,8 @@ if should_run_stage 6; then
       ROOT_DIR="outputs/olp_re10k/collect_stats/${SESSION_ID}" \
       BASELINE_CKPT="${BASELINE_CKPT_PATH}" \
       OLP_CKPT="${OLP_CKPT_PATH}" \
+      BASELINE_EVAL_NAME="${BASELINE_EVAL_NAME}" \
+      OLP_EVAL_NAME="${OLP_EVAL_NAME}" \
       SAVE_IMAGE="${FINAL_SAVE_IMAGE}" \
       WANDB_MODE="${WANDB_MODE}" \
       OLP_SEED="${OLP_SEED}" \
@@ -215,5 +221,5 @@ else
 fi
 
 log_manifest "OLP-H overnight protocol completed"
-log_manifest "Final baseline stats: outputs/olp_re10k/re10k_ft_control_eval/olp_stats_summary.json"
-log_manifest "Final OLP stats: outputs/olp_re10k/re10k_olp_ft_eval/olp_stats_summary.json"
+log_manifest "Final baseline stats: outputs/olp_re10k/${BASELINE_EVAL_NAME}/olp_stats_summary.json"
+log_manifest "Final OLP stats: outputs/olp_re10k/${OLP_EVAL_NAME}/olp_stats_summary.json"

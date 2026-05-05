@@ -46,7 +46,27 @@ nohup bash scripts/run_re10k_overnight_protocol.sh \
   > outputs/olp_re10k/overnight_nohup.log 2>&1 &
 ```
 
-직접 확인 후 fine-tuning부터 자동 실행:
+내일까지 결과 제출용 pilot 실행:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 BATCH_SIZE=8 \
+nohup bash scripts/run_re10k_pilot_overnight.sh \
+  > outputs/olp_re10k/pilot_overnight_nohup.log 2>&1 &
+```
+
+pilot에서 직접 확인 후 OLP-H fine-tuning부터 자동 실행:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 START_STAGE=5 \
+BASELINE_CKPT=./pretrained_weights/re10k.ckpt \
+BASELINE_EVAL_NAME=re10k_official_eval_stats \
+OLP_EVAL_NAME=re10k_olp_ft_eval \
+BATCH_SIZE=8 \
+nohup bash scripts/run_re10k_overnight_protocol.sh \
+  > outputs/olp_re10k/pilot_overnight_nohup.log 2>&1 &
+```
+
+controlled comparison에서 직접 확인 후 fine-tuning부터 자동 실행:
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 START_STAGE=4 BATCH_SIZE=8 \

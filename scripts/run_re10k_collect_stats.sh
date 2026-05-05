@@ -6,6 +6,8 @@ set -euo pipefail
 
 RUN_ID="${RUN_ID:-$(date +%Y%m%d_%H%M%S)}"
 ROOT_DIR="${ROOT_DIR:-outputs/olp_re10k/collect_stats/${RUN_ID}}"
+BASELINE_EVAL_NAME="${BASELINE_EVAL_NAME:-re10k_ft_control_eval}"
+OLP_EVAL_NAME="${OLP_EVAL_NAME:-re10k_olp_ft_eval}"
 mkdir -p "${ROOT_DIR}/fingerprint"
 
 git rev-parse HEAD > "${ROOT_DIR}/fingerprint/git_commit.txt"
@@ -56,5 +58,5 @@ run_eval() {
 
 # Baseline eval keeps the OLP-H module active with mix=0 so latent stats are
 # collected while the output remains identity-equivalent.
-run_eval "re10k_ft_control_eval" "${BASELINE_CKPT}" 0.0 0.0
-run_eval "re10k_olp_ft_eval" "${OLP_CKPT}" 1.0 1.0
+run_eval "${BASELINE_EVAL_NAME}" "${BASELINE_CKPT}" 0.0 0.0
+run_eval "${OLP_EVAL_NAME}" "${OLP_CKPT}" 1.0 1.0
