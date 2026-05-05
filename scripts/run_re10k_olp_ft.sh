@@ -33,6 +33,9 @@ CMD=(
   "trainer.val_check_interval=${VAL_CHECK_INTERVAL:-100000000}"
   "optimizer.lr=${LR:-2e-4}"
   "data_loader.train.batch_size=${BATCH_SIZE:-16}"
+  "data_loader.train.num_workers=${TRAIN_NUM_WORKERS:-16}"
+  "data_loader.val.num_workers=${VAL_NUM_WORKERS:-1}"
+  "data_loader.test.num_workers=${TEST_NUM_WORKERS:-4}"
   "checkpointing.every_n_train_steps=${CKPT_EVERY_N_STEPS:-5000}"
   "hydra.run.dir=${RUN_DIR}"
 )
