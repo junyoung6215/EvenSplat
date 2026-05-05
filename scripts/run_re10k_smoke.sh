@@ -4,7 +4,7 @@ set -euo pipefail
 RUN_ID="${RUN_ID:-smoke_$(date +%Y%m%d_%H%M%S)}"
 SMOKE_ROOT="${SMOKE_ROOT:-outputs/olp_re10k/smoke/${RUN_ID}}"
 
-# Use this before full A100 runs. It verifies checkpoint loading, CUDA kernels,
+# Use this before full GPU runs. It verifies checkpoint loading, CUDA kernels,
 # OLP-H forward/backward, checkpoint writing, and the command/fingerprint logs
 # with a small memory footprint.
 COMMON_ENV=(

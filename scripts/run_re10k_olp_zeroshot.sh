@@ -9,7 +9,7 @@ mkdir -p "${RUN_DIR}/fingerprint"
 git rev-parse HEAD > "${RUN_DIR}/fingerprint/git_commit.txt"
 echo "${OLP_SEED:-0}" > "${RUN_DIR}/fingerprint/olp_seed.txt"
 if [[ "${CHECK_ENV:-1}" == "1" ]]; then
-  python scripts/check_a100_env.py --output-dir "${RUN_DIR}/fingerprint"
+  python scripts/check_cuda118_env.py --output-dir "${RUN_DIR}/fingerprint"
 fi
 
 CMD=(

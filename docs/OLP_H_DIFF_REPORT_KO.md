@@ -7,8 +7,8 @@ head 입력 안정화를 위한 OLP-H 실험 코드를 모듈 형태로 추가�
 
 - 기준 저장소: `cvg/NoPoSplat`
 - 로컬 기준 commit: `a097a78c5bdd0486493f74abb1165614d86ae952`
-- 실험 버전: `olp-h-mvp-a100-v0.2`
-- 목표 장비: NVIDIA A100
+- 실험 버전: `olp-h-mvp-cuda118-v0.2`
+- 목표 환경: CUDA 11.8 + PyTorch 2.1.2 cu118
 - 목표 CUDA/PyTorch: CUDA 11.8, `torch==2.1.2+cu118`
 
 ## NoPoSplat 원본과 다른 부분
@@ -81,10 +81,10 @@ center/pts3d branch는 변경하지 않았습니다.
 
 ### 재현성 관련 추가 파일
 
-- `env/environment-a100.yml`
-- `env/requirements-a100.lock`
-- `scripts/create_a100_env.sh`
-- `scripts/check_a100_env.py`
+- `env/environment-cuda118.yml`
+- `env/requirements-cuda118.lock`
+- `scripts/create_cuda118_env.sh`
+- `scripts/check_cuda118_env.py`
 - `scripts/run_re10k_*.sh`
 - `tests/test_olp_preconditioner.py`
 
@@ -103,7 +103,7 @@ center/pts3d branch는 변경하지 않았습니다.
   같은 `OLP_SEED`를 사용해야 같은 rotation이 재현됩니다.
 - `floater_proxy`는 fixed `tau_scale`을 주거나 adaptive scale quantile을
   켜면 저장됩니다.
-- A100에서 먼저 `BATCH_SIZE=1`, `MAX_STEPS=2` smoke test로 메모리와
+- GPU 서버에서 먼저 `BATCH_SIZE=1`, `MAX_STEPS=2` smoke test로 메모리와
   checkpoint load를 확인하는 것을 권장합니다.
 - 단위테스트는 `tests/test_olp_preconditioner.py`에 있으며, disabled mode,
   norm 보존, warm-up schedule, stats 수집, seed 재현성, checkpoint buffer

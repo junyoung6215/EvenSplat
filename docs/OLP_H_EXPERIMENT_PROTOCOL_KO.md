@@ -1,6 +1,6 @@
-# OLP-H RE10K A100 실험 프로토콜
+# OLP-H RE10K CUDA 11.8 실험 프로토콜
 
-이 문서는 NoPoSplat OLP-H 실험을 A100 서버에서 재현 가능하게 실행하기 위한
+이 문서는 NoPoSplat OLP-H 실험을 CUDA 11.8 서버 환경에서 재현 가능하게 실행하기 위한
 실행 순서와 예상 산출물을 정리한 문서입니다.
 
 목표 비교는 다음입니다.
@@ -11,7 +11,7 @@ vs.
 NoPoSplat + OLP-H + FT
 ```
 
-기본 fine-tuning batch size는 `8`로 둡니다. A100에서 OOM이 나면 실험 순서는
+기본 fine-tuning batch size는 `8`로 둡니다. GPU OOM이 나면 실험 순서는
 유지하고 `BATCH_SIZE=4`로 낮춥니다. Smoke run은 반드시 full run 전에 먼저
 실행합니다.
 
@@ -159,11 +159,11 @@ cd /Users/kwon_junyoung/Desktop/4rd_1st/캡스톤디자ᄋ�
 
 공통 기준:
 
-- GPU: A100
+- GPU: CUDA-capable NVIDIA GPU, 이번 서버는 A100
 - Python: `3.10`
 - CUDA: `11.8`
 - PyTorch: `2.1.2+cu118`
-- 환경 lock: `env/requirements-a100.lock`
+- 환경 lock: `env/requirements-cuda118.lock`
 - pretrained checkpoint: `pretrained_weights/re10k.ckpt`
 - primary dataset: RE10K 256x256, 2-view
 - evaluation index: `assets/evaluation_index_re10k.json`
@@ -213,13 +213,13 @@ outputs/olp_re10k/re10k_ft_control_eval/
 따라서 train checkpoint는 `<RUN_ID>`가 붙은 Hydra run directory에서 찾고,
 eval 통계와 이미지는 `wandb.name` 기반 output directory에서 찾습니다.
 
-## 2. A100 환경 준비
+## 2. CUDA 11.8 환경 준비
 
 ```bash
-bash scripts/create_a100_env.sh
-conda activate noposplat-olp-a100
+bash scripts/create_cuda118_env.sh
+conda activate noposplat-olp-cuda118
 
-python scripts/check_a100_env.py --output-dir outputs/olp_re10k/env_check
+python scripts/check_cuda118_env.py --output-dir outputs/olp_re10k/env_check
 ```
 
 예상 산출물:
@@ -237,7 +237,7 @@ outputs/olp_re10k/env_check/
 - `torch.__version__ == "2.1.2+cu118"`
 - `torch.version.cuda == "11.8"`
 - `torch.cuda.is_available() == true`
-- GPU 이름에 `A100` 포함
+- GPU가 PyTorch에서 인식됨
 - pinned package mismatch 없음
 
 ## 3. Smoke Run
@@ -248,7 +248,7 @@ outputs/olp_re10k/env_check/
 - pretrained checkpoint load 확인
 - OLP-H forward/backward 확인
 - checkpoint 저장 확인
-- A100 memory footprint 1차 확인
+- GPU memory footprint 1차 확인
 
 실행:
 
@@ -317,7 +317,7 @@ nohup bash scripts/run_re10k_overnight_protocol.sh \
 
 stage 번호:
 
-- `0`: A100 environment check
+- `0`: CUDA 11.8 environment check
 - `1`: smoke run
 - `2`: original RE10K eval
 - `3`: OLP zero-shot diagnostic
@@ -692,7 +692,7 @@ warm-up / LR / freeze policy를 재조정해야 함
 
 ## 11. 빠른 체크리스트
 
-- [ ] `python scripts/check_a100_env.py` 통과
+- [ ] `python scripts/check_cuda118_env.py` 통과
 - [ ] smoke run 통과
 - [ ] `pretrained_load_audit.json`에서 matched key 수 확인
 - [ ] original eval image 저장 확인

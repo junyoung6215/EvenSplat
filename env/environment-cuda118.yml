@@ -1,4 +1,4 @@
-name: noposplat-olp-a100
+name: noposplat-olp-cuda118
 channels:
   - nvidia
   - conda-forge

@@ -112,7 +112,7 @@ fi
 
 if should_run_stage 0; then
   run_step "00_env_check" \
-    python scripts/check_a100_env.py --output-dir "${ROOT_DIR}/env_check"
+    python scripts/check_cuda118_env.py --output-dir "${ROOT_DIR}/env_check"
 else
   skip_stage "00_env_check"
 fi

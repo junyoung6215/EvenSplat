@@ -128,6 +128,12 @@ ENV/
 env.bak/
 venv.bak/
 
+# Experiment environment recipes are source files, not local virtualenvs.
+!env/
+env/*
+!env/environment-cuda118.yml
+!env/requirements-cuda118.lock
+
 # Spyder project settings
 .spyderproject
 .spyproject

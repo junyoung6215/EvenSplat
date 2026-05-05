@@ -8,8 +8,8 @@ transform.
 
 - Base repository: `cvg/NoPoSplat`
 - Local base commit: `a097a78c5bdd0486493f74abb1165614d86ae952`
-- Experiment version: `olp-h-mvp-a100-v0.2`
-- Target hardware: NVIDIA A100
+- Experiment version: `olp-h-mvp-cuda118-v0.2`
+- Target environment: CUDA 11.8 + PyTorch 2.1.2 cu118
 - Target CUDA/PyTorch stack: CUDA 11.8, `torch==2.1.2+cu118`
 
 ## What Is Different From NoPoSplat
@@ -83,10 +83,10 @@ The center/pts3d branch is unchanged.
 
 ### Reproducibility Additions
 
-- `env/environment-a100.yml`
-- `env/requirements-a100.lock`
-- `scripts/create_a100_env.sh`
-- `scripts/check_a100_env.py`
+- `env/environment-cuda118.yml`
+- `env/requirements-cuda118.lock`
+- `scripts/create_cuda118_env.sh`
+- `scripts/check_cuda118_env.py`
 - RE10K launch scripts under `scripts/run_re10k_*.sh`
 - `tests/test_olp_preconditioner.py`
 
@@ -104,7 +104,7 @@ The center/pts3d branch is unchanged.
   eval.
 - `floater_proxy` is emitted when a fixed `tau_scale` is provided or when the
   adaptive scale quantile is enabled.
-- Start A100 validation with `BATCH_SIZE=1` and `MAX_STEPS=2`.
+- Start GPU validation with `BATCH_SIZE=1` and `MAX_STEPS=2`.
 - Unit tests live in `tests/test_olp_preconditioner.py` and cover disabled
   mode, norm preservation, warm-up scheduling, stats collection, seed
   reproducibility, and checkpoint buffer exclusion.

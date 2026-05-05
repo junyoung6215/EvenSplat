@@ -77,10 +77,14 @@ def main() -> None:
     parser.add_argument(
         "--requirements",
         type=Path,
-        default=Path("env/requirements-a100.lock"),
+        default=Path("env/requirements-cuda118.lock"),
     )
     parser.add_argument("--output-dir", type=Path, default=None)
-    parser.add_argument("--allow-non-a100", action="store_true")
+    parser.add_argument(
+        "--require-gpu-name",
+        default=None,
+        help="Optional substring that must appear in at least one visible GPU name.",
+    )
     args = parser.parse_args()
 
     import torch
@@ -111,6 +115,7 @@ def main() -> None:
         "cuda_available": cuda_available,
         "gpu_count": torch.cuda.device_count(),
         "gpu_names": gpu_names,
+        "required_gpu_name": args.require_gpu_name,
         "nvidia_smi_query_exit_code": code,
         "nvidia_smi_query": gpu_query,
         "pin_mismatches": pin_mismatches,
@@ -128,8 +133,8 @@ def main() -> None:
         failures.append(f"torch.version.cuda {torch.version.cuda} != {EXPECTED_CUDA}")
     if not cuda_available:
         failures.append("torch.cuda.is_available() is false")
-    if not args.allow_non_a100 and not any("A100" in name for name in gpu_names):
-        failures.append(f"No A100 GPU detected: {gpu_names}")
+    if args.require_gpu_name and not any(args.require_gpu_name in name for name in gpu_names):
+        failures.append(f"No GPU name contains {args.require_gpu_name!r}: {gpu_names}")
     failures.extend(pin_mismatches)
 
     print(json.dumps(report, indent=2, sort_keys=True))
