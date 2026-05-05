@@ -48,11 +48,17 @@ class OlpEvalRecorder:
         scene: str,
         batch_idx: int,
         metrics: dict[str, torch.Tensor] | None = None,
+        overlap: float | None = None,
+        overlap_tag: str | None = None,
     ) -> None:
         stats: dict[str, Any] = {
             "scene": scene,
             "batch_idx": batch_idx,
         }
+        if overlap is not None:
+            stats["overlap"] = float(overlap)
+        if overlap_tag is not None:
+            stats["overlap_tag"] = overlap_tag
         stats.update(self.collect_preconditioner_stats(encoder))
         stats.update(
             gaussian_tail_stats(
@@ -102,6 +108,28 @@ class OlpEvalRecorder:
             merge_stats(numeric_stats),
             output_dir / "olp_stats_summary.json",
         )
+        grouped_stats = {}
+        for overlap_tag in sorted(
+            {
+                item["overlap_tag"]
+                for item in serializable_stats
+                if isinstance(item.get("overlap_tag"), str)
+            }
+        ):
+            grouped_stats[overlap_tag] = merge_stats(
+                {
+                    key: value
+                    for key, value in item.items()
+                    if isinstance(value, (int, float)) and key != "batch_idx"
+                }
+                for item in serializable_stats
+                if item.get("overlap_tag") == overlap_tag
+            )
+        if grouped_stats:
+            save_stats_json(
+                grouped_stats,
+                output_dir / "olp_stats_summary_by_overlap.json",
+            )
         with (output_dir / "olp_stats_per_scene.csv").open("w", newline="") as f:
             leading = ["scene", "batch_idx"]
             fieldnames = leading + sorted(

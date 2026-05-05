@@ -59,6 +59,7 @@ outputs/olp_re10k/re10k_official_eval_stats/
   benchmark.json
   peak_memory.json
   olp_stats_summary.json
+  olp_stats_summary_by_overlap.json
   olp_stats_per_scene.json
   olp_stats_per_scene.csv
   <scene>/color/*.png
@@ -67,10 +68,24 @@ outputs/olp_re10k/re10k_olp_ft_eval/
   benchmark.json
   peak_memory.json
   olp_stats_summary.json
+  olp_stats_summary_by_overlap.json
   olp_stats_per_scene.json
   olp_stats_per_scene.csv
   <scene>/color/*.png
 ```
+
+`small`, `medium`, `large`는 이미지 크기가 아니라 RE10K evaluation pair의
+overlap 구간입니다. 코드 기준은 다음입니다.
+
+```text
+small:  0.05 <= overlap <= 0.30
+medium: 0.30 < overlap <= 0.55
+large:  0.55 < overlap <= 0.80
+ignore: 그 외
+```
+
+이미지 해상도는 `+experiment=re10k`와 `config/dataset/re10k.yaml` 기준으로
+`256x256`입니다.
 
 controlled comparison까지 밤새 자동 실행하려면 아래 wrapper를 사용합니다.
 
@@ -406,6 +421,7 @@ outputs/olp_re10k/re10k_olp_zeroshot/
   benchmark.json
   peak_memory.json
   olp_stats_summary.json
+  olp_stats_summary_by_overlap.json
   olp_stats_per_scene.json
   olp_stats_per_scene.csv
   <scene>/color/*.png
@@ -559,6 +575,7 @@ outputs/olp_re10k/re10k_ft_control_eval/
   benchmark.json
   peak_memory.json
   olp_stats_summary.json
+  olp_stats_summary_by_overlap.json
   olp_stats_per_scene.json
   olp_stats_per_scene.csv
   <scene>/color/*.png
@@ -567,6 +584,7 @@ outputs/olp_re10k/re10k_olp_ft_eval/
   benchmark.json
   peak_memory.json
   olp_stats_summary.json
+  olp_stats_summary_by_overlap.json
   olp_stats_per_scene.json
   olp_stats_per_scene.csv
   <scene>/color/*.png
@@ -577,6 +595,13 @@ outputs/olp_re10k/re10k_olp_ft_eval/
 ```text
 outputs/olp_re10k/re10k_ft_control_eval/olp_stats_summary.json
 outputs/olp_re10k/re10k_olp_ft_eval/olp_stats_summary.json
+```
+
+overlap bucket별 비교 핵심 파일:
+
+```text
+outputs/olp_re10k/re10k_ft_control_eval/olp_stats_summary_by_overlap.json
+outputs/olp_re10k/re10k_olp_ft_eval/olp_stats_summary_by_overlap.json
 ```
 
 ## 9. 최종 비교 metric

@@ -261,6 +261,8 @@ class ModelWrapper(LightningModule):
                 )
 
         # compute scores
+        overlap = None
+        overlap_tag = None
         if self.test_cfg.compute_scores:
             overlap = batch["context"]["overlap"][0]
             overlap_tag = get_overlap_tag(overlap)
@@ -288,6 +290,8 @@ class ModelWrapper(LightningModule):
                 scene,
                 batch_idx,
                 all_metrics if self.test_cfg.compute_scores else None,
+                float(overlap.detach().cpu()) if overlap is not None else None,
+                overlap_tag,
             )
 
         if self.test_cfg.save_image:
