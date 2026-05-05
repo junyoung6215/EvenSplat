@@ -36,6 +36,8 @@ die() {
 verify_re10k() {
   local root="$1"
   local missing=0
+  local first_train_chunk=""
+  local first_test_chunk=""
 
   for path in \
     "${root}/train/index.json" \
@@ -48,12 +50,18 @@ verify_re10k() {
 
   # Some download paths, including Hugging Face local-dir workflows, may expose
   # chunk files as symlinks to a cache. Treat symlinked chunks as valid.
-  if ! find -L "${root}/train" -maxdepth 1 -name "*.torch" -type f | head -1 | grep -q .; then
+  #
+  # Use -print -quit instead of piping through head. With `set -o pipefail`,
+  # `find | head` can be reported as failed when find receives SIGPIPE after
+  # head exits, which incorrectly marks valid large datasets as missing.
+  first_train_chunk="$(find -L "${root}/train" -maxdepth 1 -name "*.torch" -type f -print -quit 2>/dev/null || true)"
+  if [[ -z "${first_train_chunk}" ]]; then
     echo "Missing train torch chunks: ${root}/train/*.torch" >&2
     missing=1
   fi
 
-  if ! find -L "${root}/test" -maxdepth 1 -name "*.torch" -type f | head -1 | grep -q .; then
+  first_test_chunk="$(find -L "${root}/test" -maxdepth 1 -name "*.torch" -type f -print -quit 2>/dev/null || true)"
+  if [[ -z "${first_test_chunk}" ]]; then
     echo "Missing test torch chunks: ${root}/test/*.torch" >&2
     missing=1
   fi
