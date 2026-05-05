@@ -6,6 +6,7 @@ config 전달과 head 호출을 위한 얇은 연결부만 있습니다.
 
 중요 문서:
 
+- 한글 실험 프로토콜: `docs/OLP_H_EXPERIMENT_PROTOCOL_KO.md`
 - 한글 변경 보고서: `docs/OLP_H_DIFF_REPORT_KO.md`
 - 영어 변경 보고서: `docs/OLP_H_DIFF_REPORT_EN.md`
 - A100 package lock: `env/requirements-a100.lock`

@@ -1,5 +1,6 @@
 > OLP-H capstone experiment docs:
 > [Korean README](README_OLP_H_KO.md),
+> [Korean experiment protocol](docs/OLP_H_EXPERIMENT_PROTOCOL_KO.md),
 > [English README](README_OLP_H_EN.md),
 > [Korean diff report](docs/OLP_H_DIFF_REPORT_KO.md),
 > [English diff report](docs/OLP_H_DIFF_REPORT_EN.md).
