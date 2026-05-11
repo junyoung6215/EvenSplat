@@ -1,0 +1,36 @@
+name: re10k_eval_compare
+stage: compare
+storage_root: /home/data/olp_h_re10k_slot0/noposplat_eval/re10k
+data_root: datasets/re10k
+wandb_mode: disabled
+cuda_visible_devices: 0
+check_env: true
+min_free_gb: 30
+
+checkpoints:
+  baseline: ./pretrained_weights/re10k.ckpt
+  olp: null
+
+olp:
+  enabled: true
+  mode: hadamard
+  dim: 256
+  seed: 0
+  collect_stats: true
+
+eval:
+  olp_tau_alpha: 0.95
+  olp_tau_scale: null
+  olp_tau_volume: null
+  olp_adaptive_tau_scale_quantile: 0.95
+
+compare:
+  source_index: assets/evaluation_index_re10k.json
+  metric_count: 2000
+  vis_count: 10
+  vis_targets_per_scene: 1
+  metric_run_name: re10k_olp_metric2000
+  vis_original_run_name: re10k_noposplat_vis10
+  vis_baseline_run_name: re10k_olp_noft_vis10
+  vis_olp_run_name: re10k_olp_ft_vis10
+  side_by_side_name: re10k_noposplat_vs_olp_noft_vs_olp_ft_vis10

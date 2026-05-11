@@ -1,10 +1,11 @@
+import json
 import os
+import signal
 from pathlib import Path
 
 import hydra
 import torch
 import wandb
-import signal
 from colorama import Fore
 from jaxtyping import install_import_hook
 from lightning.pytorch import Trainer
@@ -35,6 +36,17 @@ with install_import_hook(
 
 def cyan(text: str) -> str:
     return f"{Fore.CYAN}{text}{Fore.RESET}"
+
+
+def jsonable(value):
+    if isinstance(value, torch.Tensor):
+        value = value.detach().cpu()
+        return value.item() if value.numel() == 1 else value.tolist()
+    if isinstance(value, dict):
+        return {key: jsonable(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [jsonable(item) for item in value]
+    return value
 
 
 @hydra.main(
@@ -85,7 +97,7 @@ def train(cfg_dict: DictConfig):
             every_n_train_steps=cfg.checkpointing.every_n_train_steps,
             save_top_k=cfg.checkpointing.save_top_k,
             save_weights_only=cfg.checkpointing.save_weights_only,
-            save_last=True,
+            save_last="link",
             monitor="info/global_step",
             mode="max",
         )
@@ -158,11 +170,17 @@ def train(cfg_dict: DictConfig):
     if cfg.mode == "train":
         trainer.fit(model_wrapper, datamodule=data_module, ckpt_path=checkpoint_path)
     else:
-        trainer.test(
+        metrics = trainer.test(
             model_wrapper,
             datamodule=data_module,
             ckpt_path=checkpoint_path,
         )
+        if trainer.global_rank == 0:
+            metrics_path = output_dir / "test_metrics.json"
+            with metrics_path.open("w") as f:
+                json.dump(jsonable(metrics), f, indent=2)
+                f.write("\n")
+            print(cyan(f"Wrote test metrics to {metrics_path}."))
 
 
 if __name__ == "__main__":
