@@ -118,7 +118,10 @@ def merge_stats(list_of_dicts: Iterable[dict[str, float]]) -> dict[str, float]:
     return merged
 
 
-def save_stats_json(stats: dict[str, float], path: str | Path) -> None:
+def save_stats_json(
+    stats: dict[str, float] | dict[str, dict[str, float]],
+    path: str | Path,
+) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(stats, indent=2, sort_keys=True) + "\n")

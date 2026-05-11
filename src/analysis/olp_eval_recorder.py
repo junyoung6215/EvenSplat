@@ -108,7 +108,7 @@ class OlpEvalRecorder:
             merge_stats(numeric_stats),
             output_dir / "olp_stats_summary.json",
         )
-        grouped_stats = {}
+        grouped_stats: dict[str, dict[str, float]] = {}
         for overlap_tag in sorted(
             {
                 item["overlap_tag"]
