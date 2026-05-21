@@ -56,6 +56,42 @@ def env_for_run(config: dict[str, Any]) -> dict[str, str]:
     if get_cfg(config, "cuda_visible_devices") is not None:
         env["CUDA_VISIBLE_DEVICES"] = str(get_cfg(config, "cuda_visible_devices"))
 
+    python_path = Path(python_bin(config)).resolve()
+    python_parent = python_path.parent
+    python_prefix = python_parent.parent
+    env["PATH"] = f"{python_parent}:{env.get('PATH', '')}"
+    env["CONDA_PREFIX"] = str(python_prefix)
+    env["CONDA_DEFAULT_ENV"] = python_prefix.name
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+
+    cache_root = Path(
+        str(
+            get_cfg(
+                config,
+                "cache_root",
+                Path(str(get_cfg(config, "resolved_root_dir"))) / "cache",
+            )
+        )
+    )
+    run_id = str(get_cfg(config, "run_id", "run"))
+    tmp_root = Path(str(get_cfg(config, "tmp_root", Path("/tmp") / f"olp_{run_id}")))
+    runtime_dirs = {
+        "TMPDIR": tmp_root,
+        "TMP": tmp_root,
+        "TEMP": tmp_root,
+        "XDG_CACHE_HOME": cache_root / "xdg",
+        "TORCH_HOME": cache_root / "torch",
+        "HF_HOME": cache_root / "huggingface",
+        "WANDB_DIR": cache_root / "wandb",
+        "WANDB_CACHE_DIR": cache_root / "wandb_cache",
+        "CUDA_CACHE_PATH": cache_root / "cuda",
+        "MPLCONFIGDIR": cache_root / "matplotlib",
+        "PYTHONPYCACHEPREFIX": cache_root / "pycache",
+    }
+    for key, path in runtime_dirs.items():
+        path.mkdir(parents=True, exist_ok=True)
+        env[key] = str(path)
+
     torch_lib_dir = get_cfg(config, "torch_lib_dir")
     if torch_lib_dir is None:
         try:

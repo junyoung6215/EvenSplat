@@ -67,10 +67,11 @@ class MetricComputer(LightningModule):
                 f"psnr_{key}": compute_psnr(rgb_gt, images).mean(),
             }
         self.log_dict(all_metrics)
-        self.print_preview_metrics(all_metrics, overlap_tag)
+        preview_metrics = self._to_float_metrics(all_metrics)
+        self.print_preview_metrics(preview_metrics, overlap_tag)
 
         # save per-scene results
-        self.per_scene_results.append({key: all_metrics[f"psnr_{key}"].item() for key in all_images.keys()})
+        self.per_scene_results.append({key: preview_metrics[f"psnr_{key}"] for key in all_images.keys()})
         self.per_scene_results[-1]["scene"] = scene
         if not self.field_names:
             self.field_names = ["scene"] + list(all_images.keys())
@@ -90,7 +91,10 @@ class MetricComputer(LightningModule):
                 error_map = torch.abs(batch["target"]["image"][0, i] - image)
                 error_map = error_map.mean(dim=0)
                 error_map = apply_color_map_to_image(error_map, "jet")
-                image = add_label(vcat(image, error_map), method.key + f" ({all_metrics[f'psnr_{method.key}']:.3f})")
+                image = add_label(
+                    vcat(image, error_map),
+                    method.key + f" ({preview_metrics[f'psnr_{method.key}']:.3f})",
+                )
                 row.append(image)
             start_frame = batch["target"]["index"][0, 0]
             end_frame = batch["target"]["index"][0, -1]
@@ -112,6 +116,16 @@ class MetricComputer(LightningModule):
                 f"cd {self.cfg.side_by_side_path / scene_key} && {command} "
                 f"{Path.cwd()}/{self.cfg.side_by_side_path}/videos/{scene_key}.mp4"
             )
+
+    @staticmethod
+    def _to_float_metrics(metrics: dict[str, torch.Tensor | float]) -> dict[str, float]:
+        normalized = {}
+        for key, value in metrics.items():
+            if isinstance(value, torch.Tensor):
+                normalized[key] = float(value.detach().cpu().item())
+            else:
+                normalized[key] = float(value)
+        return normalized
 
     def print_preview_metrics(self, metrics: dict[str, float], overlap_tag: str | None = None) -> None:
         if getattr(self, "running_metrics", None) is None:

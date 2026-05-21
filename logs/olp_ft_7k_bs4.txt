@@ -1,0 +1,280 @@
+{
+  "cc": "",
+  "conda_lib_cudart12": [],
+  "conda_prefix": "/root/miniconda3/envs/noposplat-olp-cu118-clean",
+  "cuda_available": true,
+  "cuda_home": "",
+  "cuda_path": "",
+  "cuda_type_traits_exists": true,
+  "cuda_type_traits_path": "/root/miniconda3/envs/noposplat-olp-cu118-clean/include/cuda/std/type_traits",
+  "cv2_import_error": "",
+  "cv2_import_ok": true,
+  "cxx": "",
+  "diff_gaussian_rasterization_extension_path": "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/diff_gaussian_rasterization/_C.cpython-310-x86_64-linux-gnu.so",
+  "diff_gaussian_rasterization_import_error": "",
+  "diff_gaussian_rasterization_import_ok": true,
+  "diff_gaussian_rasterization_ldd": "\tlinux-vdso.so.1 (0x00007ffe03122000)\n\tlibc10.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libc10.so (0x00007ff959472000)\n\tlibtorch_cpu.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so (0x00007ff941f00000)\n\tlibtorch_python.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libtorch_python.so (0x00007ff940c86000)\n\tlibcudart.so.11.0 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/libcudart.so.11.0 (0x00007ff940800000)\n\tlibstdc++.so.6 => /lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007ff9405d4000)\n\tlibgcc_s.so.1 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/libgcc_s.so.1 (0x00007ff940c52000)\n\tlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007ff9403ab000)\n\tlibm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007ff940b6b000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007ff959628000)\n\tlibrt.so.1 => /lib/x86_64-linux-gnu/librt.so.1 (0x00007ff940b66000)\n\tlibdl.so.2 => /lib/x86_64-linux-gnu/libdl.so.2 (0x00007ff940b61000)\n\tlibpthread.so.0 => /lib/x86_64-linux-gnu/libpthread.so.0 (0x00007ff940b5a000)\n\tlibgomp-a34b3233.so.1 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libgomp-a34b3233.so.1 (0x00007ff940000000)\n\tlibshm.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libshm.so (0x00007ff940b50000)\n\tlibtorch.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libtorch.so (0x00007ff940b31000)\n\tlibnvToolsExt-847d78f2.so.1 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libnvToolsExt-847d78f2.so.1 (0x00007ff93fc00000)\n\tlibtorch_cuda.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libtorch_cuda.so (0x00007ff8ecb4b000)\n\tlibc10_cuda.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libc10_cuda.so (0x00007ff94028a000)\n\tlibcudnn.so.8 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libcudnn.so.8 (0x00007ff8ec800000)\n\tlibcudart-d0da41ae.so.11.0 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libcudart-d0da41ae.so.11.0 (0x00007ff8ec400000)\n\tlibcublas.so.11 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libcublas.so.11 (0x00007ff8e6600000)\n\tlibcublasLt.so.11 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libcublasLt.so.11 (0x00007ff8c2000000)\n",
+  "diff_gaussian_rasterization_ldd_exit_code": 0,
+  "gcc_exit_code": 0,
+  "gcc_version": "gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+  "gpu_count": 1,
+  "gpu_names": [
+    "NVIDIA A100-SXM4-80GB MIG 3g.40gb"
+  ],
+  "gxx_exit_code": 0,
+  "gxx_version": "g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+  "nvcc_exit_code": 0,
+  "nvcc_version": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2022 NVIDIA Corporation\nBuilt on Wed_Sep_21_10:33:58_PDT_2022\nCuda compilation tools, release 11.8, V11.8.89\nBuild cuda_11.8.r11.8/compiler.31833905_0\n",
+  "nvidia_smi_query": "NVIDIA A100-SXM4-80GB, 535.183.01, [Insufficient Permissions]\n",
+  "nvidia_smi_query_exit_code": 0,
+  "pin_mismatches": [],
+  "platform": "Linux-5.4.0-192-generic-x86_64-with-glibc2.35",
+  "python": "3.10.13 | packaged by conda-forge | (main, Dec 23 2023, 15:36:39) [GCC 12.3.0]",
+  "required_gpu_name": null,
+  "torch": "2.1.2+cu118",
+  "torch_cuda": "11.8"
+}
+[36mSaving outputs to /workspace/olp_h_re10k_slot0/NoPoSplat/outputs/olp_re10k/re10k_olp_ft_7k_bs4/20260506_151346/train.[39m
+rm: cannot remove 'outputs/local': No such file or directory
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+[checkpoint-audit] Encoder pretrained load summary:
+{
+  "checkpoint_format": "state_dict",
+  "loaded_key_count": 1145,
+  "matched_key_count": 1145,
+  "matched_key_sample": [
+    "backbone.dec_blocks.0.attn.proj.bias",
+    "backbone.dec_blocks.0.attn.proj.weight",
+    "backbone.dec_blocks.0.attn.qkv.bias",
+    "backbone.dec_blocks.0.attn.qkv.weight",
+    "backbone.dec_blocks.0.cross_attn.proj.bias",
+    "backbone.dec_blocks.0.cross_attn.proj.weight",
+    "backbone.dec_blocks.0.cross_attn.projk.bias",
+    "backbone.dec_blocks.0.cross_attn.projk.weight",
+    "backbone.dec_blocks.0.cross_attn.projq.bias",
+    "backbone.dec_blocks.0.cross_attn.projq.weight",
+    "backbone.dec_blocks.0.cross_attn.projv.bias",
+    "backbone.dec_blocks.0.cross_attn.projv.weight",
+    "backbone.dec_blocks.0.mlp.fc1.bias",
+    "backbone.dec_blocks.0.mlp.fc1.weight",
+    "backbone.dec_blocks.0.mlp.fc2.bias",
+    "backbone.dec_blocks.0.mlp.fc2.weight",
+    "backbone.dec_blocks.0.norm1.bias",
+    "backbone.dec_blocks.0.norm1.weight",
+    "backbone.dec_blocks.0.norm2.bias",
+    "backbone.dec_blocks.0.norm2.weight",
+    "backbone.dec_blocks.0.norm3.bias",
+    "backbone.dec_blocks.0.norm3.weight",
+    "backbone.dec_blocks.0.norm_y.bias",
+    "backbone.dec_blocks.0.norm_y.weight",
+    "backbone.dec_blocks.1.attn.proj.bias",
+    "backbone.dec_blocks.1.attn.proj.weight",
+    "backbone.dec_blocks.1.attn.qkv.bias",
+    "backbone.dec_blocks.1.attn.qkv.weight",
+    "backbone.dec_blocks.1.cross_attn.proj.bias",
+    "backbone.dec_blocks.1.cross_attn.proj.weight"
+  ],
+  "missing_key_count": 0,
+  "missing_key_sample": [],
+  "strict": false,
+  "unexpected_key_count": 0,
+  "unexpected_key_sample": [],
+  "weight_path": "pretrained_weights/re10k.ckpt"
+}
+Setting up [LPIPS] perceptual loss: trunk [vgg], v[0.1], spatial [off]
+[2026-05-06 15:15:58,896][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+
+[2026-05-06 15:15:58,897][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=VGG16_Weights.IMAGENET1K_V1`. You can also use `weights=VGG16_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+
+Loading model from: /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lpips/weights/v0.1/vgg.pth
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+┏━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━┓
+┃   ┃ Name    ┃ Type                 ┃ Params ┃ Mode  ┃ FLOPs ┃
+┡━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━┩
+│ 0 │ encoder │ EncoderNoPoSplat     │  611 M │ train │     0 │
+│ 1 │ decoder │ DecoderSplattingCUDA │      0 │ train │     0 │
+│ 2 │ losses  │ ModuleList           │      0 │ train │     0 │
+└───┴─────────┴──────────────────────┴────────┴───────┴───────┘
+Trainable params: 611 M                                                         
+Non-trainable params: 0                                                         
+Total params: 611 M                                                             
+Total estimated model params size (MB): 2.4 K                                   
+Modules in train mode: 1310                                                     
+Modules in eval mode: 59                                                        
+Total FLOPs: 0                                                                  
+[2026-05-06 15:16:23,783][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/trainer/connectors/data_connector.py:434: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=16` in the `DataLoader` to improve performance.
+
+[2026-05-06 15:16:23,820][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/loops/fit_loop.py:534: Found 59 module(s) in eval mode at the start of training. This may lead to unexpected behavior during training. If this is intentional, you can ignore this warning.
+
+train step 0; scene = ['0f93fdb52c6933cf', 'a3a5e373d876db0e', 'c1f32a7a7ec37d39', '524e550992aa6e60']; context = [[96, 121], [122, 147], [4, 29], [33, 58]]; loss = 0.005872
+Skipped bad example 1c46c37d7928785e. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+train step 100; scene = ['f7b7405f352d53a3', 'f9b775ee94d60763', 'e7ae5d42e1d888df', '18f0c92d9d8786dd']; context = [[155, 180], [3, 28], [39, 64], [85, 110]]; loss = 0.010255
+Skipped bad example d9dc27d0e5121b5a. Context shape was torch.Size([2, 3, 270, 640]) and target shape was torch.Size([4, 3, 270, 640]).
+[2026-05-06 15:21:48,739][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/optim/lr_scheduler.py:149: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+
+train step 200; scene = ['719e2e8912e4eed3', '51c08f281fa58279', 'a3b6faa8d238d993', '13e4423e7785869c']; context = [[8, 34], [87, 112], [32, 57], [79, 105]]; loss = 0.011473
+Skipped bad example 8fe8e5425024ed22. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+Skipped bad example fd3e1decbfa0c8bd. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+train step 300; scene = ['5ac9002c4bc39722', 'b8123f46fa57929d', 'fbac5d77812b81bc', 'a362305625fafb20']; context = [[163, 189], [53, 78], [0, 25], [6, 32]]; loss = 0.011690
+Skipped bad example 4322d01742463579. Context shape was torch.Size([2, 3, 360, 638]) and target shape was torch.Size([4, 3, 360, 638]).
+Skipped bad example 3a596a6b42ce7b8f. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+train step 400; scene = ['e19c6facac1c9624', 'f4cc5be3eb218af5', '53a0c8f7a231f22b', '5cc6a2fa5f0a41a8']; context = [[133, 160], [31, 58], [5, 32], [6, 31]]; loss = 0.010219
+train step 500; scene = ['08aa649837aabee7', 'd010e7868ce6dc97', 'bbfd4ef6cbee9323', '3eec0cf675cc6711']; context = [[209, 235], [156, 183], [128, 155], [229, 257]]; loss = 0.013056
+Skipped bad example 167f974d9ad170b3. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+train step 600; scene = ['80c31b550426d52f', 'ad986b13d4db790c', '485274f02ea43b07', '547583d5f8ae1238']; context = [[250, 276], [13, 39], [33, 61], [8, 35]]; loss = 0.014858
+Skipped bad example 18726ed9d4ac4056. Context shape was torch.Size([2, 3, 266, 640]) and target shape was torch.Size([4, 3, 266, 640]).
+train step 700; scene = ['1f3dae4428a8d9bc', 'a740e82dd72e351d', '5305f13cbd5351cf', '34ffc4903e3a1622']; context = [[7, 36], [11, 37], [81, 109], [83, 111]]; loss = 0.013067
+Skipped bad example 167f974d9ad170b3. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+Skipped bad example 2fa1fa7d914967e1. Context shape was torch.Size([2, 3, 360, 480]) and target shape was torch.Size([4, 3, 360, 480]).
+train step 800; scene = ['918e44e4ed0ca4b6', '933455a00b7e0575', '952a6c361259de70', 'ef8f0fd78fcb44e0']; context = [[10, 38], [9, 37], [62, 89], [60, 87]]; loss = 0.024193
+train step 900; scene = ['0e869c9c126906db', '5102042496230ec1', 'c17be2c1facd23a8', '5431b4af9712cad6']; context = [[85, 111], [106, 134], [58, 88], [19, 50]]; loss = 0.012493
+Skipped bad example 85286f80c1b89c7e. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+train step 1000; scene = ['17b586b2d92e9309', '93ef2f0bd081e8eb', '4187156916d90e07', '27aaacb0d6f48092']; context = [[2, 30], [32, 63], [1, 31], [33, 61]]; loss = 0.011630
+Skipped bad example a61e8dde71c94378. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+Skipped bad example 7ab1ca08282c3433. Context shape was torch.Size([2, 3, 360, 480]) and target shape was torch.Size([4, 3, 360, 480]).
+train step 1100; scene = ['24add6cb04d4d532', '969c91a2507e2d81', '0d39f26bcf32c8a5', '74100e9fd6373f84']; context = [[84, 112], [86, 118], [34, 61], [0, 30]]; loss = 0.015607
+train step 1200; scene = ['3ec1eeba0cc084af', 'b86f88d0d21318cd', '34037b62eef60172', 'c0e9d9f4f60169e0']; context = [[61, 91], [11, 38], [46, 76], [33, 64]]; loss = 0.016363
+train step 1300; scene = ['0bd2ca5f73805004', '2c038029540167fb', '53dd8f88f5a8df75', '5f6dff31cfdd1827']; context = [[74, 101], [6, 35], [33, 66], [8, 35]]; loss = 0.023271
+train step 1400; scene = ['6fad7d90b7b6d111', '4fa8ea842dc6c780', 'fe0e0778afc3f27b', '303a4ea29cb63cbe']; context = [[15, 49], [176, 206], [77, 109], [39, 69]]; loss = 0.014666
+Skipped bad example 7ab1ca08282c3433. Context shape was torch.Size([2, 3, 360, 480]) and target shape was torch.Size([4, 3, 360, 480]).
+train step 1500; scene = ['388833ad509005ee', '488f101dac781951', '3d180f7db4ceac89', '391c225f2d89a186']; context = [[155, 189], [0, 31], [19, 47], [127, 158]]; loss = 0.018358
+Skipped bad example e8fbd405de042d15. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+train step 1600; scene = ['f30398f000a252c0', '9662f49b6a764dfb', 'da1f9f2859b59142', 'a92ec569ae5c2a73']; context = [[18, 50], [71, 100], [37, 67], [50, 83]]; loss = 0.015781
+train step 1700; scene = ['d796a60deda5453d', '2f109c7377896128', 'c176654607fd9cce', '2b8fc71bdd8e6450']; context = [[56, 89], [25, 55], [43, 76], [153, 184]]; loss = 0.017294
+train step 1800; scene = ['eb630841cdb3a850', 'b63eb0ba5d05e948', '56b9fc4f422e8019', '52614c162eae652d']; context = [[23, 52], [0, 35], [6, 34], [128, 164]]; loss = 0.016087
+train step 1900; scene = ['42b208082fce3bc2', '718964098658e7cd', '84e6b90f0c2567d8', '1ceffd0ae37330dd']; context = [[143, 177], [99, 135], [13, 47], [10, 39]]; loss = 0.013771
+train step 2000; scene = ['11a0410061415599', '8a063a94cfe50aa1', '1170794da4c3f477', '7f52ee494a9f69f1']; context = [[44, 80], [64, 93], [73, 111], [51, 83]]; loss = 0.010212
+train step 2100; scene = ['3ca192a6f7bd3055', '7a1a5b280aeed1d1', '2c290bdca58889a4', 'b87f3bd2e5b947d9']; context = [[21, 60], [103, 132], [1, 30], [153, 192]]; loss = 0.015621
+Skipped bad example 27a0b36151c1bf00. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+train step 2200; scene = ['7efe572aca0b57ef', '1b585c8a5c9d0228', '5678b255dedbe157', 'de0c2fd682eedb42']; context = [[95, 132], [25, 63], [71, 110], [199, 235]]; loss = 0.009615
+Skipped bad example d30278e7725848d4. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+Skipped bad example ea7599893cf2aca7. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+train step 2300; scene = ['6e23ea0adefdcdfe', '6a089a1af0cd47d3', '4f2295416524f95e', '0fef731ee5f47c37']; context = [[2, 33], [37, 68], [53, 84], [80, 115]]; loss = 0.019236
+train step 2400; scene = ['d9641b3f6ca0b13d', 'c35caeecb39384c1', '0a11dd9556fc99b0', '0f819dc526c6789d']; context = [[5, 41], [49, 80], [52, 87], [15, 52]]; loss = 0.013933
+Skipped bad example 61da54275b061d0c. Context shape was torch.Size([2, 3, 272, 640]) and target shape was torch.Size([4, 3, 272, 640]).
+train step 2500; scene = ['7c7abf86e91d1d1c', '99b9d665bd0f367a', '6601dce6f338cc1f', '48c354a9712d07b1']; context = [[16, 48], [38, 73], [2, 39], [0, 34]]; loss = 0.011165
+train step 2600; scene = ['7fdf985ba46e978d', '5e64c580f02995fe', '60ebe67fcdbb0767', 'c0fa0cb15499fc43']; context = [[228, 266], [243, 275], [1, 35], [89, 126]]; loss = 0.011626
+Skipped bad example 72e2ce4f83b3e671. Context shape was torch.Size([2, 3, 360, 480]) and target shape was torch.Size([4, 3, 360, 480]).
+Skipped bad example e84db13b2609c01b. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+Skipped bad example 7be2495aa0af52bd. Context shape was torch.Size([2, 3, 270, 640]) and target shape was torch.Size([4, 3, 270, 640]).
+train step 2700; scene = ['ae1ca5263f6a9d2b', 'd8818d888521236e', 'c0eeedcbdaec3ce8', '3768486bf75a31a5']; context = [[23, 57], [123, 154], [18, 59], [53, 93]]; loss = 0.008552
+train step 2800; scene = ['a76159f46f60d60a', '72ba04bcd23b41a7', '270c92beac8cc380', '1d9c36d49c81ce34']; context = [[10, 53], [24, 68], [25, 58], [23, 62]]; loss = 0.017605
+Skipped bad example 5cf9c532b4c343de. Context shape was torch.Size([2, 3, 266, 640]) and target shape was torch.Size([4, 3, 266, 640]).
+train step 2900; scene = ['402329e243df3834', '60b8121fc6fac480', '0ea34d96c88e77b8', '664ad76c825a89a4']; context = [[30, 70], [8, 44], [13, 51], [4, 45]]; loss = 0.011763
+Skipped bad example 72e2ce4f83b3e671. Context shape was torch.Size([2, 3, 360, 480]) and target shape was torch.Size([4, 3, 360, 480]).
+Skipped bad example 05bae62564ad07db. Context shape was torch.Size([2, 3, 270, 640]) and target shape was torch.Size([4, 3, 270, 640]).
+validation step 3000; scene = ['306e2b7785657539']; context = [[38, 80]]
+[2026-05-06 17:00:51,065][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/utilities/data.py:79: Trying to infer the `batch_size` from an ambiguous collection. The batch size we found is 1. To avoid any miscalculations, use `self.log(..., batch_size=batch_size)`.
+
+Setting up [LPIPS] perceptual loss: trunk [vgg], v[0.1], spatial [off]
+[2026-05-06 17:00:51,066][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+
+[2026-05-06 17:00:51,066][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=VGG16_Weights.IMAGENET1K_V1`. You can also use `weights=VGG16_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+
+Loading model from: /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lpips/weights/v0.1/vgg.pth
+wandb: Encoding video...
+wandb: Encoding video...
+train step 3000; scene = ['b5b8801fce3a8754', '5f29b6d60b37b94a', '5b2563dddb9d6035', '9c528e44da5e641b']; context = [[15, 57], [58, 90], [15, 56], [9, 46]]; loss = 0.019033
+train step 3100; scene = ['9d97607ce7905c2a', '06bee3668900d256', '889deb5eb86b5e45', '39f951132830b2ef']; context = [[88, 124], [30, 65], [39, 76], [80, 121]]; loss = 0.009569
+Skipped bad example 14a3e0fe5fb3a03d. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+train step 3200; scene = ['b23d0744a8a448b8', '4b2f6642fc295553', 'da00b7213105b4a8', '27455d91c2ce386d']; context = [[21, 62], [22, 55], [63, 100], [13, 49]]; loss = 0.010440
+Skipped bad example 2d7e6f95bbebad81. Context shape was torch.Size([2, 3, 360, 480]) and target shape was torch.Size([4, 3, 360, 480]).
+train step 3300; scene = ['c2923fa433879e60', '591bf6ac3800ca21', '15cd8f43f173d0e3', 'cae0139a521aa052']; context = [[49, 81], [4, 50], [1, 41], [6, 42]]; loss = 0.016469
+train step 3400; scene = ['f8e7e4c60d55ea07', '69d6916a535a24eb', '5fae3a38b69ea340', '9a7c6f09f20079c2']; context = [[51, 90], [88, 124], [86, 132], [26, 63]]; loss = 0.023627
+Skipped bad example 7691bf8fdcdd4035. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+train step 3500; scene = ['17a222a4d296d309', '2a43ee2f245c1337', '4364c3b9403ffd96', 'a97842b559fa0582']; context = [[46, 89], [44, 89], [6, 50], [3, 49]]; loss = 0.013333
+Skipped bad example 4322d01742463579. Context shape was torch.Size([2, 3, 360, 638]) and target shape was torch.Size([4, 3, 360, 638]).
+train step 3600; scene = ['63b0f36fa4b80593', 'a43662d2b5050d3e', 'fc2a6fbf654d942d', '6d61ad929ef27967']; context = [[36, 79], [142, 189], [56, 88], [44, 92]]; loss = 0.011531
+Skipped bad example 283b06c640f9da60. Context shape was torch.Size([2, 3, 360, 480]) and target shape was torch.Size([4, 3, 360, 480]).
+Skipped bad example 4510081d129663f8. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+train step 3700; scene = ['fc7d2c78519c4689', 'b13dc2fdd812794f', 'f9835f45bbc6a4fa', '6c752d1521988682']; context = [[45, 90], [47, 97], [37, 79], [17, 62]]; loss = 0.016636
+train step 3800; scene = ['e8bbe6394087ff2b', 'c6246a94432e00c6', '6e0446b32be39b1f', 'e93f2d8e5c3e2da3']; context = [[0, 33], [0, 46], [5, 49], [56, 105]]; loss = 0.014960
+Skipped bad example a8a1a44a199e4537. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+train step 3900; scene = ['6306786de63f1537', '7df9941d67654aac', 'd6aa2c7c076d2738', 'b509b83544d44451']; context = [[41, 85], [228, 274], [0, 33], [132, 181]]; loss = 0.016930
+train step 4000; scene = ['fc665068424c2e80', '5d0ce5e557060f2c', '729e1efcddd5058a', '3cafe7c03ee5782e']; context = [[22, 67], [0, 38], [17, 65], [70, 104]]; loss = 0.019890
+Skipped bad example 4322d01742463579. Context shape was torch.Size([2, 3, 360, 638]) and target shape was torch.Size([4, 3, 360, 638]).
+train step 4100; scene = ['807a812350f25893', 'de3ccf8d3c418bef', '51d68b77c408e914', 'de36333a5c68eb32']; context = [[27, 73], [76, 122], [5, 42], [2, 38]]; loss = 0.014201
+Skipped bad example 42f79c8a75bfbe82. Context shape was torch.Size([2, 3, 270, 640]) and target shape was torch.Size([4, 3, 270, 640]).
+train step 4200; scene = ['def88f4446e088ca', '0cd782442a95166c', 'db30a004a7ebb212', 'c985e6462e64cf36']; context = [[54, 94], [9, 43], [12, 56], [22, 70]]; loss = 0.015381
+Skipped bad example ff8e065e62f3e8c4. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+train step 4300; scene = ['6584c6557fa7f8f5', 'd1dd88cc2ddcf5b9', 'e46b29fc12390c9b', '5ee2d8b0a1718221']; context = [[121, 174], [54, 107], [84, 124], [1, 54]]; loss = 0.021955
+Skipped bad example f406feca12838a98. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+train step 4400; scene = ['b4d6a33d16da0ae1', '17674684fb9714dd', '438e844c28489623', 'ebe6648408cf6880']; context = [[27, 67], [13, 55], [7, 57], [3, 57]]; loss = 0.012172
+train step 4500; scene = ['3d091f661f2b9fd3', 'f58e63b78cfc54cc', 'f0f62401af0e2e2f', '86dcb18aa5732bf9']; context = [[78, 127], [3, 52], [182, 227], [51, 97]]; loss = 0.015207
+Skipped bad example 66b1b13a19eb779b. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+train step 4600; scene = ['87a64b94f041d188', '7f656223fcc8913e', '00259da07b0dba33', 'aea87b7cc45be423']; context = [[186, 224], [154, 197], [193, 228], [18, 55]]; loss = 0.014585
+Skipped bad example fa98ea54cff08227. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+train step 4700; scene = ['a983f9bbf8f45e19', '034a57b1ea3c8ca9', '349738c773f1af23', '582179e6a58732db']; context = [[47, 100], [54, 91], [105, 152], [34, 74]]; loss = 0.013589
+Skipped bad example c09d4d68093653c9. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+train step 4800; scene = ['1c2a649eebbf909e', 'a13d6561db213baa', '239ee85d525cc9ec', 'be22dc5d40ca5c8a']; context = [[54, 111], [29, 76], [4, 52], [69, 117]]; loss = 0.011296
+train step 4900; scene = ['3bf7857bb7d748c9', '9620840e96b2d2b6', '4b6052c5b5512c05', 'c0d3f4a673a39f7a']; context = [[54, 95], [28, 84], [150, 201], [28, 86]]; loss = 0.016783
+train step 5000; scene = ['8ff606e3b4579d71', 'c3546f2378897274', 'd9dccd1426001628', '9d67cfafbd23367e']; context = [[75, 122], [57, 99], [34, 74], [81, 139]]; loss = 0.017720
+Skipped bad example 643d67b447d32767. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+Skipped bad example 18726ed9d4ac4056. Context shape was torch.Size([2, 3, 266, 640]) and target shape was torch.Size([4, 3, 266, 640]).
+Skipped bad example 66b1b13a19eb779b. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+train step 5100; scene = ['75196bdec738648f', 'e520f0d8cd4572cf', 'aa35c34f6959d1fc', '3462bb5ea3a6722f']; context = [[18, 76], [0, 40], [159, 208], [195, 255]]; loss = 0.018578
+Skipped bad example 796e6cc225fa6cf5. Context shape was torch.Size([2, 3, 338, 640]) and target shape was torch.Size([4, 3, 338, 640]).
+train step 5200; scene = ['cf6c752f6f5f28ac', '7a6718d2b81f0f64', '0b8494a5c91c18a9', 'b8c66dab70ecc10c']; context = [[156, 200], [1, 39], [16, 66], [6, 65]]; loss = 0.018284
+train step 5300; scene = ['69f7e4f788c49aa4', '104007f70e21a2fa', '6f81e13e86ca60e2', '77210b9d48fc2c62']; context = [[93, 130], [57, 118], [69, 112], [0, 55]]; loss = 0.011061
+train step 5400; scene = ['da4deac373a366be', '0c319081d6fdfa8d', 'b999e8b53f9bda12', 'a5a27648fdade0d9']; context = [[229, 278], [24, 63], [3, 61], [166, 220]]; loss = 0.014495
+train step 5500; scene = ['fbc1ce735bdab6e1', '832722d3bc8ca01f', '3eb81ffa1e18b6e3', 'fc0a88af32caa79d']; context = [[19, 58], [18, 74], [29, 87], [0, 61]]; loss = 0.011303
+Skipped bad example 4510081d129663f8. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+train step 5600; scene = ['88a6790c97629d07', '6a140ea6d457efae', '540bc85f7c1b643e', 'a02a9658551d219d']; context = [[17, 66], [41, 80], [71, 119], [9, 67]]; loss = 0.011909
+Skipped bad example 7ab1ca08282c3433. Context shape was torch.Size([2, 3, 360, 480]) and target shape was torch.Size([4, 3, 360, 480]).
+train step 5700; scene = ['d19b2171a8edd830', '064941adad8489fd', 'b25a0f4ffca51d79', '9dd2c1c6262f1e33']; context = [[4, 61], [5, 69], [56, 107], [12, 69]]; loss = 0.017068
+train step 5800; scene = ['11c47219c153c014', '4beff98ac10fb266', 'e0b75e74fdeffde9', '36c9ae4fa8a4aecd']; context = [[145, 184], [5, 45], [0, 59], [71, 120]]; loss = 0.014084
+Skipped bad example 5cf9c532b4c343de. Context shape was torch.Size([2, 3, 266, 640]) and target shape was torch.Size([4, 3, 266, 640]).
+train step 5900; scene = ['a2e2c2e66db9a05c', '4f456caaf8e278eb', 'a11b25880bc2ffd6', '08e1c61005ae86ec']; context = [[72, 127], [1, 65], [52, 95], [34, 72]]; loss = 0.011097
+Skipped bad example 9742dc2fd93b8048. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+Skipped bad example 1657bbba4292511e. Context shape was torch.Size([2, 3, 270, 480]) and target shape was torch.Size([4, 3, 270, 480]).
+Skipped bad example d2046992590ba04e. Context shape was torch.Size([2, 3, 360, 480]) and target shape was torch.Size([4, 3, 360, 480]).
+Error executing job with overrides: ['+experiment=re10k', 'mode=train', 'wandb.mode=disabled', 'wandb.name=re10k_olp_ft_7k_bs4', 'model.encoder.pretrained_weights=./pretrained_weights/re10k.ckpt', 'checkpointing.load=null', 'dataset.re10k.roots=[datasets/re10k]', 'model.encoder.orthogonal_preconditioner.enabled=true', 'model.encoder.orthogonal_preconditioner.mode=hadamard', 'model.encoder.orthogonal_preconditioner.dim=256', 'model.encoder.orthogonal_preconditioner.mix=0.0', 'model.encoder.orthogonal_preconditioner.target_mix=1.0', 'model.encoder.orthogonal_preconditioner.warmup_steps=1500', 'model.encoder.orthogonal_preconditioner.seed=0', 'model.encoder.orthogonal_preconditioner.collect_stats=true', 'trainer.max_steps=7000', 'trainer.num_sanity_val_steps=0', 'trainer.val_check_interval=3000', 'optimizer.lr=2e-4', 'data_loader.train.batch_size=4', 'data_loader.train.num_workers=16', 'data_loader.val.num_workers=1', 'data_loader.test.num_workers=4', 'checkpointing.every_n_train_steps=1000', 'checkpointing.save_top_k=9', 'checkpointing.save_weights_only=false', 'train.print_log_every_n_steps=100']
+Traceback (most recent call last):
+  File "/workspace/olp_h_re10k_slot0/NoPoSplat/src/main.py", line 159, in train
+    trainer.fit(model_wrapper, datamodule=data_module, ckpt_path=checkpoint_path)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 584, in fit
+    call._call_and_handle_interrupt(
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 49, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 630, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path, weights_only=weights_only)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1079, in _run
+    results = self._run_stage()
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1123, in _run_stage
+    self.fit_loop.run()
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/loops/fit_loop.py", line 217, in run
+    self.advance()
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/loops/fit_loop.py", line 465, in advance
+    self.epoch_loop.run(self._data_fetcher)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/loops/training_epoch_loop.py", line 153, in run
+    self.advance(data_fetcher)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/loops/training_epoch_loop.py", line 375, in advance
+    call._call_callback_hooks(trainer, "on_train_batch_end", batch_output, batch, batch_idx)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 228, in _call_callback_hooks
+    fn(trainer, trainer.lightning_module, *args, **kwargs)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/callbacks/model_checkpoint.py", line 485, in on_train_batch_end
+    self._save_last_checkpoint(trainer, monitor_candidates)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/callbacks/model_checkpoint.py", line 923, in _save_last_checkpoint
+    self._save_checkpoint(trainer, filepath)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/callbacks/model_checkpoint.py", line 600, in _save_checkpoint
+    trainer.save_checkpoint(filepath, self.save_weights_only)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1464, in save_checkpoint
+    self.strategy.save_checkpoint(checkpoint, filepath, storage_options=storage_options)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 491, in save_checkpoint
+    self.checkpoint_io.save_checkpoint(checkpoint, filepath, storage_options=storage_options)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/fabric/plugins/io/torch_io.py", line 58, in save_checkpoint
+    _atomic_save(checkpoint, path)
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/fabric/utilities/cloud_io.py", line 104, in _atomic_save
+    f.write(bytesbuffer.getvalue())
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/fsspec/implementations/local.py", line 473, in write
+    return self.f.write(*args, **kwargs)
+OSError: [Errno 28] No space left on device
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
