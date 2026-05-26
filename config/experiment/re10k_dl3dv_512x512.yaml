@@ -5,7 +5,7 @@ defaults:
   - /dataset@_group_.dl3dv: dl3dv
   - override /model/encoder: noposplat
   - override /model/encoder/backbone: croco
-  - override /loss: [mse, lpips]
+  - override /loss: [mse, lpips, geo]
 
 wandb:
   name: re10k_dl3dv

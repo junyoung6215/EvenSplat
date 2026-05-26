@@ -21,6 +21,7 @@ from .common.gaussian_adapter import GaussianAdapter, GaussianAdapterCfg, Unifie
 from .encoder import Encoder
 from .heads.preconditioner_cfg import OrthogonalPreconditionerCfg
 from .heads.preconditioner_utils import set_preconditioner_step
+from .heads.reliability_cfg import GaussianReliabilityCfg
 from .visualization.encoder_visualizer_epipolar_cfg import EncoderVisualizerEpipolarCfg
 
 
@@ -52,6 +53,7 @@ class EncoderNoPoSplatCfg:
     pretrained_weights: str = ""
     pose_free: bool = True
     orthogonal_preconditioner: Optional[OrthogonalPreconditionerCfg] = None
+    gaussian_reliability: Optional[GaussianReliabilityCfg] = None
 
 
 def rearrange_head(feat, patch_size, H, W):
@@ -81,6 +83,9 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
         self.raw_gs_dim = 1 + self.gaussian_adapter.d_in  # 1 for opacity
 
         self.gs_params_head_type = cfg.gs_params_head_type
+        self.gaussian_reliability_cfg = (
+            cfg.gaussian_reliability or GaussianReliabilityCfg()
+        )
 
         self.set_center_head(output_mode='pts3d', head_type='dpt', landscape_only=True,
                            depth_mode=('exp', -inf, inf), conf_mode=None,)
@@ -98,6 +103,11 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
         self.head2 = transpose_to_landscape(self.downstream_head2, activate=landscape_only)
 
     def set_gs_params_head(self, cfg, head_type):
+        if bool(self.gaussian_reliability_cfg.enabled) and head_type != 'dpt_gs':
+            raise NotImplementedError(
+                "gaussian_reliability.enabled=True is currently implemented "
+                "for gs_params_head_type=dpt_gs only."
+            )
         if head_type == 'linear':
             self.gaussian_param_head = nn.Sequential(
                 nn.ReLU(),
@@ -120,6 +130,7 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
                 has_conf=False,
                 out_nchan=self.raw_gs_dim,
                 preconditioner_cfg=cfg.orthogonal_preconditioner,
+                reliability_cfg=cfg.gaussian_reliability,
             )
             self.gaussian_param_head2 = head_factory(
                 head_type,
@@ -128,9 +139,53 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
                 has_conf=False,
                 out_nchan=self.raw_gs_dim,
                 preconditioner_cfg=cfg.orthogonal_preconditioner,
+                reliability_cfg=cfg.gaussian_reliability,
             )
         else:
             raise NotImplementedError(f"unexpected {head_type=}")
+
+    def _head_reliability(
+        self,
+        head: nn.Module,
+        gs_params: Tensor,
+    ) -> Tensor:
+        b, r, _ = gs_params.shape
+        device = gs_params.device
+        dtype = gs_params.dtype
+        if not bool(self.gaussian_reliability_cfg.enabled):
+            return torch.ones(
+                b,
+                r,
+                self.cfg.num_surfaces,
+                1,
+                device=device,
+                dtype=dtype,
+            )
+
+        reliability = getattr(head, "latest_reliability", None)
+        if reliability is None:
+            raise RuntimeError(
+                "gaussian_reliability.enabled=True requires a dpt_gs head with "
+                "a configured reliability branch."
+            )
+        reliability = rearrange(reliability, "b s h w -> b (h w) s")
+        if reliability.shape[1] != r:
+            raise RuntimeError(
+                "Reliability head output is not pixel-aligned with Gaussian "
+                f"parameters: got {tuple(reliability.shape)} for {tuple(gs_params.shape)}."
+            )
+        if reliability.shape[-1] == 1 and self.cfg.num_surfaces > 1:
+            reliability = reliability.expand(b, r, self.cfg.num_surfaces)
+        if reliability.shape[-1] != self.cfg.num_surfaces:
+            raise RuntimeError(
+                "Reliability head must output either one channel or one channel "
+                f"per surface. Got {reliability.shape[-1]} channels for "
+                f"{self.cfg.num_surfaces} surfaces."
+            )
+        reliability = reliability.unsqueeze(-1).to(device=device, dtype=dtype)
+        if bool(self.gaussian_reliability_cfg.detach_gate):
+            reliability = reliability.detach()
+        return reliability
 
     def map_pdf_to_opacity(
         self,
@@ -182,8 +237,10 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
             elif self.gs_params_head_type == 'dpt_gs':
                 GS_res1 = self.gaussian_param_head([tok.float() for tok in dec1], res1['pts3d'].permute(0, 3, 1, 2), view1['img'][:, :3], shape1[0].cpu().tolist())
                 GS_res1 = rearrange(GS_res1, "b d h w -> b (h w) d")
+                reliability1 = self._head_reliability(self.gaussian_param_head, GS_res1)
                 GS_res2 = self.gaussian_param_head2([tok.float() for tok in dec2], res2['pts3d'].permute(0, 3, 1, 2), view2['img'][:, :3], shape2[0].cpu().tolist())
                 GS_res2 = rearrange(GS_res2, "b d h w -> b (h w) d")
+                reliability2 = self._head_reliability(self.gaussian_param_head2, GS_res2)
 
         pts3d1 = res1['pts3d']
         pts3d1 = rearrange(pts3d1, "b h w d -> b (h w) d")
@@ -197,13 +254,19 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
         gaussians = torch.stack([GS_res1, GS_res2], dim=1)
         gaussians = rearrange(gaussians, "... (srf c) -> ... srf c", srf=self.cfg.num_surfaces)
         densities = gaussians[..., 0].sigmoid().unsqueeze(-1)
+        if not bool(self.gaussian_reliability_cfg.enabled):
+            reliability = torch.ones_like(densities)
+        else:
+            reliability = torch.stack([reliability1, reliability2], dim=1)
+        base_opacities = self.map_pdf_to_opacity(densities, global_step)
+        modulated_opacities = base_opacities * reliability
 
         # Convert the features and depths into Gaussians.
         if self.pose_free:
             gaussians = self.gaussian_adapter.forward(
                 pts_all.unsqueeze(-2),
                 depths,
-                self.map_pdf_to_opacity(densities, global_step),
+                modulated_opacities,
                 rearrange(gaussians[..., 1:], "b v r srf c -> b v r srf () c"),
             )
         else:
@@ -216,7 +279,7 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
                 rearrange(context["intrinsics"], "b v i j -> b v () () () i j"),
                 rearrange(xy_ray, "b v r srf xy -> b v r srf () xy"),
                 depths,
-                self.map_pdf_to_opacity(densities, global_step),
+                modulated_opacities,
                 rearrange(gaussians[..., 1:], "b v r srf c -> b v r srf () c"),
                 (h, w),
             )
@@ -237,6 +300,12 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
             )
             visualization_dump['opacities'] = rearrange(
                 gaussians.opacities, "b v (h w) srf s -> b v h w srf s", h=h, w=w
+            )
+            visualization_dump["reliability"] = rearrange(
+                reliability, "b v (h w) srf s -> b v h w srf s", h=h, w=w
+            )
+            visualization_dump["opacities_before_reliability"] = rearrange(
+                base_opacities, "b v (h w) srf s -> b v h w srf s", h=h, w=w
             )
 
         return Gaussians(

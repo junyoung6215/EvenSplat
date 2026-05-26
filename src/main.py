@@ -128,6 +128,7 @@ def train(cfg_dict: DictConfig):
         enable_progress_bar=False,
         gradient_clip_val=cfg.trainer.gradient_clip_val,
         max_steps=cfg.trainer.max_steps,
+        limit_test_batches=cfg.trainer.limit_test_batches,
         # plugins=[SLURMEnvironment(requeue_signal=signal.SIGUSR1)],  # Uncomment for SLURM auto resubmission.
         inference_mode=False if (cfg.mode == "test" and cfg.test.align_pose) else True,
     )
@@ -159,6 +160,8 @@ def train(cfg_dict: DictConfig):
         get_losses(cfg.loss),
         step_tracker,
         distiller=distiller,
+        anchor_selection_cfg=cfg.model.anchor_selection,
+        debug_cfg=cfg.debug,
     )
     data_module = DataModule(
         cfg.dataset,

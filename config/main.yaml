@@ -1,7 +1,7 @@
 defaults:
   - model/encoder: noposplat
   - model/decoder: splatting_cuda
-  - loss: [mse]
+  - loss: [mse, geo]
 
 wandb:
   project: noposplat
@@ -10,6 +10,20 @@ wandb:
   mode: disabled
 
 mode: train
+
+model:
+  anchor_selection:
+    enabled: false
+    method: none
+    apply_to: test
+    renormalize_cameras: true
+    allow_unsafe_reorder: false
+    debug_save_scores: false
+    vggt_cache_root: null
+    score_weights:
+      overlap: 1.0
+      confidence: 0.5
+      blur: 0.1
 
 #dataset:
 #  overfit_to_scene: null
@@ -50,6 +64,16 @@ train:
   distiller: ''
   distill_max_steps: 1000000
 
+debug:
+  anchor:
+    enabled: false
+    output_dir: debug_anchor
+    save_first_n_batches: 4
+  geo:
+    enabled: false
+    output_dir: debug_geo
+    save_first_n_batches: 4
+
 test:
   output_path: outputs/test
   align_pose: true
@@ -73,6 +97,7 @@ trainer:
   val_check_interval: 250
   num_sanity_val_steps: 2
   gradient_clip_val: 0.5
+  limit_test_batches: null
   num_nodes: 1
 
 hydra:

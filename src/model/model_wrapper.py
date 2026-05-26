@@ -1,6 +1,8 @@
+import json
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Protocol, runtime_checkable
+from typing import Any, Optional, Protocol, runtime_checkable
 
 import moviepy.editor as mpy
 import torch
@@ -28,6 +30,15 @@ from ..misc.LocalLogger import LOG_PATH, LocalLogger
 from ..misc.nn_module_tools import convert_to_buffer
 from ..misc.step_tracker import StepTracker
 from ..misc.utils import inverse_normalize, vis_depth_map, confidence_map, get_overlap_tag
+from ..utils.anchor_selection import (
+    AnchorSelectionCfg,
+    anchor_selection_applies_to_stage,
+    renormalize_cameras_to_selected_anchor,
+    reorder_context_fields,
+    require_safe_anchor_reorder,
+    save_anchor_debug,
+    select_anchor_indices,
+)
 from ..visualization.annotation import add_label
 from ..visualization.camera_trajectory.interpolation import (
     interpolate_extrinsics,
@@ -113,12 +124,17 @@ class ModelWrapper(LightningModule):
         losses: list[Loss],
         step_tracker: StepTracker | None,
         distiller: Optional[nn.Module] = None,
+        anchor_selection_cfg: AnchorSelectionCfg | None = None,
+        debug_cfg: Any | None = None,
     ) -> None:
         super().__init__()
         self.optimizer_cfg = optimizer_cfg
         self.test_cfg = test_cfg
         self.train_cfg = train_cfg
+        self.anchor_selection_cfg = anchor_selection_cfg or AnchorSelectionCfg()
+        self.debug_cfg = debug_cfg
         self.step_tracker = step_tracker
+        self._warned_anchor_inactive_stages: set[str] = set()
 
         # Set up the model.
         self.encoder = encoder
@@ -126,6 +142,11 @@ class ModelWrapper(LightningModule):
         self.decoder = decoder
         self.data_shim = get_data_shim(self.encoder)
         self.losses = nn.ModuleList(losses)
+        if any(
+            bool(getattr(module, "reliability_enabled", False))
+            for module in self.encoder.modules()
+        ):
+            self.strict_loading = False
 
         self.distiller = distiller
         self.distiller_loss = None
@@ -141,6 +162,201 @@ class ModelWrapper(LightningModule):
             tau_volume=test_cfg.olp_tau_volume,
             adaptive_tau_scale_quantile=test_cfg.olp_adaptive_tau_scale_quantile,
         )
+
+    def _geo_loss_enabled(self) -> bool:
+        return any(
+            getattr(loss_fn, "name", None) == "geo"
+            and bool(getattr(loss_fn, "cfg", None).enabled)
+            and float(getattr(loss_fn, "cfg", None).weight) != 0.0
+            for loss_fn in self.losses
+        )
+
+    def _anchor_selection_applies(self, stage: str) -> bool:
+        applies = anchor_selection_applies_to_stage(self.anchor_selection_cfg, stage)
+        cfg = self.anchor_selection_cfg
+        if (
+            bool(getattr(cfg, "enabled", False))
+            and getattr(cfg, "method", "none") != "none"
+            and not applies
+            and stage not in self._warned_anchor_inactive_stages
+        ):
+            warnings.warn(
+                "model.anchor_selection.enabled=true, but "
+                f"model.anchor_selection.apply_to={cfg.apply_to!r} excludes "
+                f"the current {stage!r} stage. Anchor selection is inactive for "
+                "this stage.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self._warned_anchor_inactive_stages.add(stage)
+        return applies
+
+    def _debug_anchor_enabled(self) -> bool:
+        debug_anchor = getattr(self.debug_cfg, "anchor", None)
+        return bool(
+            getattr(debug_anchor, "enabled", False)
+            or self.anchor_selection_cfg.debug_save_scores
+        )
+
+    def _debug_geo_enabled(self) -> bool:
+        debug_geo = getattr(self.debug_cfg, "geo", None)
+        return bool(getattr(debug_geo, "enabled", False))
+
+    def _prepare_anchorgeo_batch(self, batch, batch_idx: int, stage: str):
+        context = batch.get("context", {})
+        image = context.get("image")
+        if not isinstance(image, Tensor):
+            return batch
+
+        b = image.shape[0]
+        original_context_indices = context.get("index")
+        anchor_indices = torch.zeros(b, dtype=torch.long, device=image.device)
+        scores = None
+        anchor_selection_active = self._anchor_selection_applies(stage)
+        renormalized_cameras = False
+        unsafe_reorder = False
+
+        if anchor_selection_active:
+            anchor_indices, scores = select_anchor_indices(
+                batch,
+                self.anchor_selection_cfg,
+                return_scores=True,
+            )
+            renormalized_cameras = require_safe_anchor_reorder(
+                self.anchor_selection_cfg
+            )
+            if renormalized_cameras:
+                batch = renormalize_cameras_to_selected_anchor(batch, anchor_indices)
+            else:
+                unsafe_reorder = True
+                batch = reorder_context_fields(batch, anchor_indices)
+            self.log(
+                f"anchor/{stage}_selected_index_mean",
+                anchor_indices.float().mean(),
+            )
+            if scores is not None:
+                self.log(f"anchor/{stage}_score_mean", scores.float().mean())
+
+        reordered_anchor_indices = torch.zeros_like(anchor_indices)
+        metadata = dict(batch.get("_anchorgeo", {}))
+        metadata.update(
+            {
+                "original_anchor_indices": anchor_indices,
+                "anchor_indices": reordered_anchor_indices,
+                "anchor_scores": scores,
+                "camera_frame": (
+                    "original_context0" if unsafe_reorder else "context0"
+                ),
+                "camera_renormalized_to_anchor": renormalized_cameras,
+                "unsafe_reorder": unsafe_reorder,
+                "debug_geo_enabled": self._debug_geo_enabled(),
+            }
+        )
+        batch = dict(batch)
+        batch["_anchorgeo"] = metadata
+
+        self._maybe_save_anchor_debug(
+            batch,
+            stage=stage,
+            batch_idx=batch_idx,
+            selected_anchor_indices=anchor_indices,
+            original_context_indices=original_context_indices,
+            scores=scores,
+        )
+        return batch
+
+    @rank_zero_only
+    def _maybe_save_anchor_debug(
+        self,
+        batch,
+        *,
+        stage: str,
+        batch_idx: int,
+        selected_anchor_indices: Tensor,
+        original_context_indices: Tensor | None,
+        scores: Tensor | None,
+    ) -> None:
+        if not self._debug_anchor_enabled():
+            return
+        debug_anchor = getattr(self.debug_cfg, "anchor", None)
+        save_first_n = int(getattr(debug_anchor, "save_first_n_batches", 4))
+        if batch_idx >= save_first_n:
+            return
+        output_dir = getattr(debug_anchor, "output_dir", Path("debug_anchor"))
+        save_anchor_debug(
+            output_dir,
+            stage=stage,
+            batch_idx=batch_idx,
+            global_step=int(self.global_step),
+            selected_anchor_indices=selected_anchor_indices,
+            original_context_indices=original_context_indices,
+            reordered_context_indices=batch["context"].get("index"),
+            scores=scores,
+            scenes=batch.get("scene"),
+        )
+
+    def _attach_geo_intermediates(self, batch, visualization_dump: dict | None) -> None:
+        if visualization_dump is None:
+            return
+        metadata = batch.setdefault("_anchorgeo", {})
+        metadata["visualization_dump"] = visualization_dump
+        if "means" in visualization_dump:
+            metadata["canonical_points"] = visualization_dump["means"]
+            metadata["canonical_frame"] = "context0"
+            metadata["canonical_points_view_aligned"] = True
+            metadata["canonical_points_source"] = "visualization_dump['means']"
+
+    @rank_zero_only
+    def _maybe_save_geo_debug(self, loss_fn, batch_idx: int) -> None:
+        if not self._debug_geo_enabled():
+            return
+        debug_geo = getattr(self.debug_cfg, "geo", None)
+        save_first_n = int(getattr(debug_geo, "save_first_n_batches", 4))
+        if batch_idx >= save_first_n:
+            return
+        info = getattr(loss_fn, "last_info", None)
+        if not info:
+            return
+
+        output_dir = Path(getattr(debug_geo, "output_dir", Path("debug_geo")))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "batch_idx": batch_idx,
+            "global_step": int(self.global_step),
+            "loss_name": getattr(loss_fn, "name", "geo"),
+        }
+        for key, value in info.items():
+            if isinstance(value, Tensor) and value.ndim == 0:
+                payload[key] = float(value.detach().cpu().item())
+            elif isinstance(value, Tensor) and value.numel() == 1:
+                payload[key] = float(value.detach().reshape(()).cpu().item())
+            elif not isinstance(value, Tensor):
+                payload[key] = value
+        json_path = (
+            output_dir
+            / f"batch_{batch_idx:06d}_step_{int(self.global_step):06d}.json"
+        )
+        with json_path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+
+        valid_mask = info.get("valid_mask")
+        if isinstance(valid_mask, Tensor) and valid_mask.ndim == 4:
+            mask = valid_mask[0].float()
+            non_empty = mask.flatten(1).sum(dim=1) > 0
+            view_index = int(non_empty.nonzero()[0].item()) if non_empty.any() else 0
+            save_image(
+                mask[view_index],
+                output_dir
+                / f"valid_mask_batch_{batch_idx:06d}_step_{int(self.global_step):06d}.png",
+            )
+        weights = info.get("weights")
+        if isinstance(weights, Tensor) and weights.ndim == 4:
+            weight_map = weights[0].float()
+            save_image(
+                weight_map[0],
+                output_dir
+                / f"confidence_weight_batch_{batch_idx:06d}_step_{int(self.global_step):06d}.png",
+            )
 
     def training_step(self, batch, batch_idx):
         # combine batch from different dataloaders
@@ -160,13 +376,15 @@ class ModelWrapper(LightningModule):
                             raise NotImplementedError
             batch = batch_combined
         batch: BatchedExample = self.data_shim(batch)
+        batch = self._prepare_anchorgeo_batch(batch, batch_idx, "train")
         _, _, _, h, w = batch["target"]["image"].shape
 
         # Run the model.
         visualization_dump = None
-        if self.distiller is not None:
+        if self.distiller is not None or self._geo_loss_enabled():
             visualization_dump = {}
         gaussians = self.encoder(batch["context"], self.global_step, visualization_dump=visualization_dump)
+        self._attach_geo_intermediates(batch, visualization_dump)
         output = self.decoder.forward(
             gaussians,
             batch["target"]["extrinsics"],
@@ -190,6 +408,11 @@ class ModelWrapper(LightningModule):
         for loss_fn in self.losses:
             loss = loss_fn.forward(output, batch, gaussians, self.global_step)
             self.log(f"loss/{loss_fn.name}", loss)
+            if loss_fn.name == "geo" and getattr(loss_fn, "last_info", None):
+                valid_ratio = loss_fn.last_info.get("valid_ratio")
+                if isinstance(valid_ratio, Tensor):
+                    self.log("geo/valid_ratio", valid_ratio)
+                self._maybe_save_geo_debug(loss_fn, batch_idx)
             total_loss = total_loss + loss
 
         preconditioner_stats = self.olp_eval_recorder.collect_preconditioner_stats(
@@ -231,6 +454,7 @@ class ModelWrapper(LightningModule):
 
     def test_step(self, batch, batch_idx):
         batch: BatchedExample = self.data_shim(batch)
+        batch = self._prepare_anchorgeo_batch(batch, batch_idx, "test")
 
         b, v, _, h, w = batch["target"]["image"].shape
         assert b == 1
@@ -360,6 +584,8 @@ class ModelWrapper(LightningModule):
                     # Compute and log loss.
                     total_loss = 0
                     for loss_fn in self.losses:
+                        if loss_fn.name == "geo":
+                            continue
                         loss = loss_fn.forward(output, batch, gaussians, self.global_step)
                         total_loss = total_loss + loss
 
@@ -401,6 +627,7 @@ class ModelWrapper(LightningModule):
     @rank_zero_only
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         batch: BatchedExample = self.data_shim(batch)
+        batch = self._prepare_anchorgeo_batch(batch, batch_idx, "test")
 
         if self.global_rank == 0:
             print(

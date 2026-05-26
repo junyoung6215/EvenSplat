@@ -11,6 +11,7 @@ from .loss import LossCfgWrapper
 from .model.decoder import DecoderCfg
 from .model.encoder import EncoderCfg
 from .model.model_wrapper import OptimizerCfg, TestCfg, TrainCfg
+from .utils.anchor_selection import AnchorSelectionCfg
 
 
 @dataclass
@@ -25,6 +26,27 @@ class CheckpointingCfg:
 class ModelCfg:
     decoder: DecoderCfg
     encoder: EncoderCfg
+    anchor_selection: AnchorSelectionCfg
+
+
+@dataclass
+class DebugAnchorCfg:
+    enabled: bool
+    output_dir: Path
+    save_first_n_batches: int
+
+
+@dataclass
+class DebugGeoCfg:
+    enabled: bool
+    output_dir: Path
+    save_first_n_batches: int
+
+
+@dataclass
+class DebugCfg:
+    anchor: DebugAnchorCfg
+    geo: DebugGeoCfg
 
 
 @dataclass
@@ -33,6 +55,7 @@ class TrainerCfg:
     val_check_interval: int | float | None
     num_sanity_val_steps: int
     gradient_clip_val: int | float | None
+    limit_test_batches: int | float | None = None
     num_nodes: int = 1
 
 
@@ -49,6 +72,7 @@ class RootCfg:
     loss: list[LossCfgWrapper]
     test: TestCfg
     train: TrainCfg
+    debug: DebugCfg
     seed: int
 
 
