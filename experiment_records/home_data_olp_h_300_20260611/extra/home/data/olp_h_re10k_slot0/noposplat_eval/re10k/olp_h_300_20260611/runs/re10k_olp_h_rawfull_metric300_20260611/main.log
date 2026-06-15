@@ -1,0 +1,16 @@
+[2026-06-11 11:31:13,088][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+
+[2026-06-11 11:31:13,089][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=VGG16_Weights.IMAGENET1K_V1`. You can also use `weights=VGG16_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+
+[2026-06-11 11:31:35,301][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/trainer/call.py:283: Be aware that when using `ckpt_path`, callbacks used to create the checkpoint need to be provided during `Trainer` instantiation. Please add the following callbacks: ["ModelCheckpoint{'monitor': 'info/global_step', 'mode': 'max', 'every_n_train_steps': 1000, 'every_n_epochs': 0, 'train_time_interval': None}"].
+
+[2026-06-11 11:31:41,517][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+
+[2026-06-11 11:31:41,517][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=VGG16_Weights.IMAGENET1K_V1`. You can also use `weights=VGG16_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+
+[2026-06-11 11:31:43,852][py.warnings][WARNING] - /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/lightning/pytorch/utilities/data.py:79: Trying to infer the `batch_size` from an ambiguous collection. The batch size we found is 1. To avoid any miscalculations, use `self.log(..., batch_size=batch_size)`.
+

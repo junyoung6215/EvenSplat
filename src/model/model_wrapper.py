@@ -1,3 +1,5 @@
+import csv
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Protocol, runtime_checkable
@@ -42,6 +44,7 @@ from ..visualization.layout import add_border, hcat, vcat
 from ..visualization.validation_in_3d import render_cameras, render_projections
 from .decoder.decoder import Decoder, DepthRenderingMode
 from .encoder import Encoder
+from .types import Gaussians
 from .encoder.visualization.encoder_visualizer import EncoderVisualizer
 
 
@@ -68,6 +71,11 @@ class TestCfg:
     olp_tau_scale: float | None = None
     olp_tau_volume: float | None = None
     olp_adaptive_tau_scale_quantile: float | None = 0.95
+    save_gaussian_cap_stats: bool = False
+    gaussian_cap_ratios: list[float] | None = None
+    olp_raw_dump: bool = False
+    olp_raw_dump_max_locations: int = 256
+    olp_raw_dump_full_maps: bool = False
 
 
 @dataclass
@@ -127,6 +135,8 @@ class ModelWrapper(LightningModule):
         self.data_shim = get_data_shim(self.encoder)
         self.losses = nn.ModuleList(losses)
 
+        self.gaussian_cap_rows: list[dict[str, str | int | float]] = []
+
         self.distiller = distiller
         self.distiller_loss = None
         if self.distiller is not None:
@@ -140,6 +150,9 @@ class ModelWrapper(LightningModule):
             tau_scale=test_cfg.olp_tau_scale,
             tau_volume=test_cfg.olp_tau_volume,
             adaptive_tau_scale_quantile=test_cfg.olp_adaptive_tau_scale_quantile,
+            save_raw_dump=test_cfg.olp_raw_dump,
+            raw_dump_max_locations=test_cfg.olp_raw_dump_max_locations,
+            save_full_raw_maps=test_cfg.olp_raw_dump_full_maps,
         )
 
     def training_step(self, batch, batch_idx):
@@ -229,6 +242,121 @@ class ModelWrapper(LightningModule):
 
         return total_loss
 
+
+    def _gaussian_cap_ratios(self) -> list[float]:
+        ratios = self.test_cfg.gaussian_cap_ratios
+        if ratios is None:
+            return []
+        if isinstance(ratios, str):
+            ratios = [item for item in ratios.split(",") if item]
+        out = []
+        for ratio in ratios:
+            value = float(ratio)
+            if value <= 0.0:
+                continue
+            out.append(min(1.0, value))
+        return out
+
+    @staticmethod
+    def _gather_gaussian_field(field: Tensor, indices: Tensor) -> Tensor:
+        view_shape = [indices.shape[0], indices.shape[1]] + [1] * (field.ndim - 2)
+        expand_shape = [indices.shape[0], indices.shape[1]] + list(field.shape[2:])
+        gather_index = indices.reshape(view_shape).expand(expand_shape)
+        return field.gather(1, gather_index)
+
+    def _cap_gaussians_by_opacity(self, gaussians: Gaussians, ratio: float) -> Gaussians:
+        total = int(gaussians.opacities.shape[1])
+        kept = max(1, min(total, int(round(total * float(ratio)))))
+        if kept >= total:
+            return gaussians
+        indices = torch.topk(gaussians.opacities, kept, dim=1).indices
+        return Gaussians(
+            means=self._gather_gaussian_field(gaussians.means, indices),
+            covariances=self._gather_gaussian_field(gaussians.covariances, indices),
+            harmonics=self._gather_gaussian_field(gaussians.harmonics, indices),
+            opacities=self._gather_gaussian_field(gaussians.opacities, indices),
+        )
+
+    def _record_gaussian_cap_curve(
+        self,
+        batch: BatchedExample,
+        gaussians: Gaussians,
+        scene: str,
+        batch_idx: int,
+        overlap_tag: str | None,
+    ) -> None:
+        if not self.test_cfg.save_gaussian_cap_stats or not self.test_cfg.compute_scores:
+            return
+        ratios = self._gaussian_cap_ratios()
+        if not ratios:
+            return
+
+        _, v, _, h, w = batch["target"]["image"].shape
+        total = int(gaussians.opacities.shape[1])
+        rgb_gt = batch["target"]["image"][0]
+        overlap_value = batch["context"].get("overlap", None)
+        overlap = None
+        if overlap_value is not None:
+            overlap = float(overlap_value[0].detach().cpu())
+
+        for ratio in ratios:
+            capped = self._cap_gaussians_by_opacity(gaussians, ratio)
+            kept = int(capped.opacities.shape[1])
+            with self.benchmarker.time(f"decoder_cap_{int(round(ratio * 1000)):04d}", num_calls=v):
+                output = self.decoder.forward(
+                    capped,
+                    batch["target"]["extrinsics"],
+                    batch["target"]["intrinsics"],
+                    batch["target"]["near"],
+                    batch["target"]["far"],
+                    (h, w),
+                )
+            rgb_pred = output.color[0]
+            self.gaussian_cap_rows.append(
+                {
+                    "scene": scene,
+                    "batch_idx": int(batch_idx),
+                    "cap_ratio": float(ratio),
+                    "kept_gaussians": kept,
+                    "total_gaussians": total,
+                    "kept_fraction": float(kept / total),
+                    "psnr_ours": float(compute_psnr(rgb_gt, rgb_pred).mean().detach().cpu()),
+                    "ssim_ours": float(compute_ssim(rgb_gt, rgb_pred).mean().detach().cpu()),
+                    "lpips_ours": float(compute_lpips(rgb_gt, rgb_pred).mean().detach().cpu()),
+                    "overlap": overlap if overlap is not None else "",
+                    "overlap_tag": overlap_tag or "",
+                    "cap_align_pose": 0,
+                }
+            )
+
+    def _write_gaussian_cap_metrics(self, path: Path) -> None:
+        if not self.gaussian_cap_rows:
+            return
+        path.mkdir(parents=True, exist_ok=True)
+        fieldnames = sorted({key for row in self.gaussian_cap_rows for key in row})
+        leading = ["scene", "batch_idx", "cap_ratio"]
+        fieldnames = leading + [key for key in fieldnames if key not in leading]
+        with (path / "gaussian_cap_metrics.csv").open("w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(self.gaussian_cap_rows)
+        (path / "gaussian_cap_metrics.json").write_text(
+            json.dumps(self.gaussian_cap_rows, indent=2, sort_keys=True) + "\n"
+        )
+
+        summary: dict[str, dict[str, float]] = {}
+        for ratio in sorted({float(row["cap_ratio"]) for row in self.gaussian_cap_rows}):
+            rows = [row for row in self.gaussian_cap_rows if float(row["cap_ratio"]) == ratio]
+            item: dict[str, float] = {"n": float(len(rows))}
+            for metric in ("psnr_ours", "ssim_ours", "lpips_ours", "kept_gaussians", "kept_fraction"):
+                values = [float(row[metric]) for row in rows if row.get(metric) != ""]
+                if values:
+                    item[f"{metric}_mean"] = float(sum(values) / len(values))
+            summary[f"{ratio:.4f}"] = item
+        (path / "gaussian_cap_summary.json").write_text(
+            json.dumps(summary, indent=2, sort_keys=True) + "\n"
+        )
+
     def test_step(self, batch, batch_idx):
         batch: BatchedExample = self.data_shim(batch)
 
@@ -283,6 +411,11 @@ class ModelWrapper(LightningModule):
         (scene,) = batch["scene"]
         name = get_cfg()["wandb"]["name"]
         path = self.test_cfg.output_path / name
+        if self.test_cfg.compute_scores:
+            self._record_gaussian_cap_curve(
+                batch, gaussians, scene, batch_idx, overlap_tag
+            )
+
         if self.test_cfg.save_olp_stats and visualization_dump is not None:
             self.olp_eval_recorder.record_test_batch(
                 self.encoder,
@@ -292,6 +425,9 @@ class ModelWrapper(LightningModule):
                 all_metrics if self.test_cfg.compute_scores else None,
                 float(overlap.detach().cpu()) if overlap is not None else None,
                 overlap_tag,
+            )
+            self.olp_eval_recorder.write_full_raw_maps(
+                path, scene, batch_idx, self.encoder, visualization_dump
             )
 
         if self.test_cfg.save_image:
@@ -396,6 +532,7 @@ class ModelWrapper(LightningModule):
         )
         if self.test_cfg.save_olp_stats:
             self.olp_eval_recorder.write(path)
+        self._write_gaussian_cap_metrics(path)
         self.benchmarker.summarize()
 
     @rank_zero_only

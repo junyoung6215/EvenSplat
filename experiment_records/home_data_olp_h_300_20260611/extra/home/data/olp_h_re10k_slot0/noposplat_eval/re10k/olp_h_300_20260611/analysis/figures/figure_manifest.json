@@ -1,0 +1,14 @@
+{
+  "figures": [
+    "/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/analysis/figures/active_gaussian_compactness.png",
+    "/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/analysis/figures/gaussian_cap_curve_psnr_lpips.png",
+    "/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/analysis/figures/channel_top1_histogram.png",
+    "/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/analysis/figures/channel_outlier_relationships.png",
+    "/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/analysis/figures/channel_outlier_example_maps.png"
+  ],
+  "source_files": {
+    "cap_curve_summary": "/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/analysis/gaussian_cap_curve_summary.csv",
+    "channel_summary": "/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/analysis/channel_outliers/channel_outlier_summary.json",
+    "summary_missing300": "/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/analysis/summary_missing300.json"
+  }
+}
