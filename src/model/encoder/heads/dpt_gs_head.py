@@ -8,15 +8,18 @@
 # the forward function also takes as input a dictionnary img_info with key "height" and "width"
 # for PixelwiseTask, the output will be of dimension B x num_channels x H x W
 # --------------------------------------------------------
-from einops import rearrange
+import math
 from typing import List
+
 import torch
 import torch.nn as nn
+from einops import rearrange
 # import dust3r.utils.path_to_croco
 from .dpt_block import DPTOutputAdapter, Interpolate, make_fusion_block
 from .head_modules import UnetExtractor
 from .latent_preconditioner import build_latent_preconditioner
 from .postprocess import postprocess
+from .preconditioner_cfg import cfg_get
 
 
 # class DPTOutputAdapter_fix(DPTOutputAdapter):
@@ -118,6 +121,38 @@ class DPTOutputAdapter_fix(DPTOutputAdapter):
             nn.ReLU(),
         )
         self.preconditioner = nn.Identity()
+        self.reliability_enabled = False
+        self.reliability_r_min = 0.05
+        self.reliability_head = None
+        self.latest_reliability = None
+
+    def configure_reliability(self, cfg=None) -> None:
+        self.reliability_enabled = bool(cfg_get(cfg, "enabled", False))
+        if not self.reliability_enabled:
+            self.reliability_head = None
+            return
+
+        r_min = float(cfg_get(cfg, "r_min", 0.05))
+        r_init = float(cfg_get(cfg, "r_init", 0.95))
+        if not 0.0 <= r_min < 1.0:
+            raise ValueError(f"gaussian_reliability.r_min must be in [0, 1), got {r_min}.")
+        if not r_min < r_init < 1.0:
+            raise ValueError(
+                "gaussian_reliability.r_init must satisfy "
+                f"r_min < r_init < 1, got r_min={r_min}, r_init={r_init}."
+            )
+
+        target = (r_init - r_min) / (1.0 - r_min)
+        logit = math.log(target / (1.0 - target))
+        self.reliability_r_min = r_min
+        self.reliability_head = nn.Sequential(
+            nn.Conv2d(self.feature_dim, self.feature_dim, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(True),
+            nn.Conv2d(self.feature_dim, 1, kernel_size=1),
+        )
+        final = self.reliability_head[-1]
+        nn.init.zeros_(final.weight)
+        nn.init.constant_(final.bias, logit)
 
     def forward(self, encoder_tokens: List[torch.Tensor], depths, imgs, image_size=None, conf=None):
         assert self.dim_tokens_enc is not None, 'Need to call init(dim_tokens_enc) function first'
@@ -156,6 +191,13 @@ class DPTOutputAdapter_fix(DPTOutputAdapter):
 
         # Output head
         out = self.head(path_1)
+        if self.reliability_head is None:
+            self.latest_reliability = None
+        else:
+            logits = self.reliability_head(path_1)
+            self.latest_reliability = self.reliability_r_min + (
+                1.0 - self.reliability_r_min
+            ) * logits.sigmoid()
 
         return out
 
@@ -165,7 +207,7 @@ class PixelwiseTaskWithDPT(nn.Module):
 
     def __init__(self, *, n_cls_token=0, hooks_idx=None, dim_tokens=None,
                  output_width_ratio=1, num_channels=1, postprocess=None, depth_mode=None, conf_mode=None,
-                 preconditioner_cfg=None, **kwargs):
+                 preconditioner_cfg=None, reliability_cfg=None, **kwargs):
         super(PixelwiseTaskWithDPT, self).__init__()
         self.return_all_layers = True  # backbone needs to return all layers
         self.postprocess = postprocess
@@ -185,9 +227,13 @@ class PixelwiseTaskWithDPT(nn.Module):
             preconditioner_cfg,
             dim=256,
         )
+        self.dpt.configure_reliability(reliability_cfg)
+        self.reliability_enabled = self.dpt.reliability_enabled
+        self.latest_reliability = None
 
     def forward(self, x, depths, imgs, img_info, conf=None):
         out = self.dpt(x, depths, imgs, image_size=(img_info[0], img_info[1]), conf=conf)
+        self.latest_reliability = self.dpt.latest_reliability
         if self.postprocess:
             out = self.postprocess(out, self.depth_mode, self.conf_mode)
         return out
@@ -199,6 +245,7 @@ def create_gs_dpt_head(
     out_nchan=3,
     postprocess_func=postprocess,
     preconditioner_cfg=None,
+    reliability_cfg=None,
 ):
     """
     return PixelwiseTaskWithDPT for given net params
@@ -218,4 +265,5 @@ def create_gs_dpt_head(
                                 depth_mode=net.depth_mode,
                                 conf_mode=net.conf_mode,
                                 preconditioner_cfg=preconditioner_cfg,
+                                reliability_cfg=reliability_cfg,
                                 head_type='gs_params')

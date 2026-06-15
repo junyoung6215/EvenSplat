@@ -95,6 +95,29 @@ nohup bash scripts/run_re10k_overnight_protocol.sh \
   > outputs/olp_re10k/overnight_nohup.log 2>&1 &
 ```
 
+## Gradient Accumulation / Group Batch
+
+GPU 메모리 때문에 per-device `BATCH_SIZE=4` 정도만 가능한 경우, 여러 micro-batch의
+gradient를 누적한 뒤 optimizer step을 한 번 수행할 수 있습니다.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 BATCH_SIZE=4 ACCUMULATE_GRAD_BATCHES=2 \
+nohup bash scripts/run_re10k_overnight_protocol.sh \
+  > outputs/olp_re10k/overnight_nohup.log 2>&1 &
+```
+
+effective batch size는 다음과 같습니다.
+
+```text
+effective_batch = BATCH_SIZE * ACCUMULATE_GRAD_BATCHES * num_gpus
+```
+
+예를 들어 single GPU에서 `BATCH_SIZE=4`, `ACCUMULATE_GRAD_BATCHES=2`이면
+effective batch는 8입니다. Lightning은 micro-batch마다 backward를 수행하고,
+`ACCUMULATE_GRAD_BATCHES`번 누적한 뒤 `optimizer.step()`을 호출합니다.
+`MAX_STEPS`, checkpoint interval, OLP-H warmup step은 optimizer step 기준으로
+해석됩니다.
+
 동일 조건의 baseline FT checkpoint가 이미 있으면:
 
 ```bash

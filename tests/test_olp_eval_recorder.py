@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import torch
 from jaxtyping import install_import_hook
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,8 +90,34 @@ def test_olp_eval_recorder_writes_summary_files(tmp_path):
     assert math.isclose(by_overlap["small"]["floater_proxy"], 0.5)
 
 
+def test_olp_eval_recorder_records_reliability_stats(tmp_path):
+    class DummyEncoder(torch.nn.Module):
+        pass
+
+    recorder = OlpEvalRecorder()
+    visualization_dump = {
+        "opacities": torch.tensor([0.1, 0.9]),
+        "scales": torch.tensor([[1.0, 1.0, 1.0], [2.0, 2.0, 2.0]]),
+        "reliability": torch.tensor([0.25, 0.75]),
+    }
+
+    recorder.record_test_batch(DummyEncoder(), visualization_dump, "scene_a", 0)
+    recorder.write(tmp_path)
+
+    stats = recorder.per_scene[0]
+    assert math.isclose(stats["reliability_mean"], 0.5)
+    assert math.isclose(stats["reliability_min"], 0.25)
+    assert math.isclose(stats["reliability_max"], 0.75)
+    assert math.isclose(stats["reliability_below_050"], 0.5)
+
+    summary = json.loads((tmp_path / "olp_stats_summary.json").read_text())
+    assert math.isclose(summary["reliability_mean"], 0.5)
+
+
 if __name__ == "__main__":
     with TemporaryDirectory() as tmp:
         test_save_stats_json_accepts_by_overlap_summary(Path(tmp))
     with TemporaryDirectory() as tmp:
         test_olp_eval_recorder_writes_summary_files(Path(tmp))
+    with TemporaryDirectory() as tmp:
+        test_olp_eval_recorder_records_reliability_stats(Path(tmp))

@@ -1,0 +1,1 @@
+/home/data/olp_h_re10k_slot0/noposplat_runs/re10k/re10k_olp_ft/full_20260511_300k_v2_resume122k/train/checkpoints/epoch_0-step_300000.ckpt

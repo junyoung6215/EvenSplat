@@ -1,0 +1,102 @@
+{
+  "02b618a34bc12ff9": {
+    "context": [
+      4,
+      64
+    ],
+    "overlap": 0.71504,
+    "target": [
+      15
+    ]
+  },
+  "1ce8503fd200fed2": {
+    "context": [
+      6,
+      56
+    ],
+    "overlap": 0.46488,
+    "target": [
+      39
+    ]
+  },
+  "1fb651cd12893f99": {
+    "context": [
+      4,
+      56
+    ],
+    "overlap": 0.60568,
+    "target": [
+      18
+    ]
+  },
+  "4f7ce11656b1bf7b": {
+    "context": [
+      5,
+      87
+    ],
+    "overlap": 0.37454,
+    "target": [
+      8
+    ]
+  },
+  "617580a94b6fd65a": {
+    "context": [
+      13,
+      66
+    ],
+    "overlap": 0.5458,
+    "target": [
+      32
+    ]
+  },
+  "79c2ebfef0718b1e": {
+    "context": [
+      24,
+      75
+    ],
+    "overlap": 0.68719,
+    "target": [
+      31
+    ]
+  },
+  "abf2836f83d04375": {
+    "context": [
+      10,
+      118
+    ],
+    "overlap": 0.37229,
+    "target": [
+      74
+    ]
+  },
+  "d59ce927e3434d0e": {
+    "context": [
+      29,
+      190
+    ],
+    "overlap": 0.23241,
+    "target": [
+      96
+    ]
+  },
+  "f22e31c9b9bd3320": {
+    "context": [
+      11,
+      155
+    ],
+    "overlap": 0.2233,
+    "target": [
+      148
+    ]
+  },
+  "f287c679c250a841": {
+    "context": [
+      152,
+      209
+    ],
+    "overlap": 0.64539,
+    "target": [
+      177
+    ]
+  }
+}

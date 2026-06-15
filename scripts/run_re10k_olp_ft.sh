@@ -31,6 +31,7 @@ CMD=(
   "trainer.max_steps=${MAX_STEPS:-18751}"
   "trainer.num_sanity_val_steps=${NUM_SANITY_VAL_STEPS:-0}"
   "trainer.val_check_interval=${VAL_CHECK_INTERVAL:-100000000}"
+  "trainer.accumulate_grad_batches=${ACCUMULATE_GRAD_BATCHES:-1}"
   "optimizer.lr=${LR:-2e-4}"
   "data_loader.train.batch_size=${BATCH_SIZE:-16}"
   "data_loader.train.num_workers=${TRAIN_NUM_WORKERS:-16}"

@@ -16,6 +16,7 @@ def head_factory(
     has_conf=False,
     out_nchan=3,
     preconditioner_cfg=None,
+    reliability_cfg=None,
 ):
     """" build a prediction head for the decoder
     """
@@ -32,6 +33,7 @@ def head_factory(
             out_nchan=out_nchan,
             postprocess_func=None,
             preconditioner_cfg=preconditioner_cfg,
+            reliability_cfg=reliability_cfg,
         )
     else:
         raise NotImplementedError(f"unexpected {head_type=} and {output_mode=}")

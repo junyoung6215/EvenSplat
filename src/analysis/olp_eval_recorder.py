@@ -8,7 +8,13 @@ from typing import Any
 import torch
 from torch import nn
 
-from .olp_stats import gaussian_tail_stats, merge_stats, save_stats_json
+from .olp_stats import (
+    gaussian_tail_stats,
+    merge_stats,
+    opacity_reliability_effect_stats,
+    reliability_stats,
+    save_stats_json,
+)
 
 
 class OlpEvalRecorder:
@@ -102,7 +108,11 @@ class OlpEvalRecorder:
         scale_max = scales.amax(dim=-1)
         proxy = opacities * scale_max
         n = min(self.raw_dump_max_locations, int(proxy.numel()))
-        values, indices = torch.topk(proxy, n) if n > 0 else ([], [])
+        if n > 0:
+            values, indices = torch.topk(proxy, n)
+        else:
+            values = proxy.new_empty(0)
+            indices = torch.empty(0, dtype=torch.long, device=proxy.device)
 
         depth_flat = None
         depth = visualization_dump.get("depth")
@@ -163,6 +173,15 @@ class OlpEvalRecorder:
                 adaptive_tau_scale_quantile=self.adaptive_tau_scale_quantile,
             )
         )
+        if "opacities_before_reliability" in visualization_dump:
+            stats.update(
+                opacity_reliability_effect_stats(
+                    visualization_dump["opacities_before_reliability"],
+                    visualization_dump["opacities"],
+                )
+            )
+        if "reliability" in visualization_dump:
+            stats.update(reliability_stats(visualization_dump["reliability"]))
         if metrics is not None:
             stats.update(
                 {

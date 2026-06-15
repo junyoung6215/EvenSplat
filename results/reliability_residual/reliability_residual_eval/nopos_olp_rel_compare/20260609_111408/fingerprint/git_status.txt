@@ -1,0 +1,22 @@
+ M README_GAUSSIAN_RELIABILITY_KO.md
+ M README_OLP_H_KO.md
+ M config/main.yaml
+ M scripts/run_re10k_ft_control.sh
+ M scripts/run_re10k_olp_ft.sh
+ M scripts/run_re10k_overnight_protocol.sh
+ M scripts/run_re10k_pilot_overnight.sh
+ M scripts/run_re10k_smoke.sh
+ M src/analysis/olp_eval_recorder.py
+ M src/analysis/olp_stats.py
+ M src/config.py
+ M src/experiment_runner/commands.py
+ M src/loss/__init__.py
+ M src/main.py
+ M src/model/model_wrapper.py
+ M tests/test_olp_eval_recorder.py
+?? config/loss/reliability.yaml
+?? scripts/run_re10k_nopos_olp_rel_fullqual_compare.sh
+?? scripts/run_re10k_reliability_residual_eval.sh
+?? scripts/run_re10k_reliability_residual_ft.sh
+?? src/loss/loss_reliability.py
+?? tests/test_reliability_loss.py

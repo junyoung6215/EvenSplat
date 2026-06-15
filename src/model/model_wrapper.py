@@ -1,11 +1,13 @@
 import csv
 import json
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Protocol, runtime_checkable
+from typing import Any, Optional, Protocol, runtime_checkable
 
 import moviepy.editor as mpy
 import torch
+import torch.nn.functional as F
 import wandb
 from einops import pack, rearrange, repeat
 from jaxtyping import Float
@@ -19,6 +21,7 @@ from ..analysis.olp_eval_recorder import OlpEvalRecorder
 from ..dataset.data_module import get_data_shim
 from ..dataset.types import BatchedExample
 from ..evaluation.metrics import compute_lpips, compute_psnr, compute_ssim
+from ..geometry.projection import project
 from ..global_cfg import get_cfg
 from ..loss import Loss
 from ..loss.loss_point import Regr3D
@@ -30,6 +33,15 @@ from ..misc.LocalLogger import LOG_PATH, LocalLogger
 from ..misc.nn_module_tools import convert_to_buffer
 from ..misc.step_tracker import StepTracker
 from ..misc.utils import inverse_normalize, vis_depth_map, confidence_map, get_overlap_tag
+from ..utils.anchor_selection import (
+    AnchorSelectionCfg,
+    anchor_selection_applies_to_stage,
+    renormalize_cameras_to_selected_anchor,
+    reorder_context_fields,
+    require_safe_anchor_reorder,
+    save_anchor_debug,
+    select_anchor_indices,
+)
 from ..visualization.annotation import add_label
 from ..visualization.camera_trajectory.interpolation import (
     interpolate_extrinsics,
@@ -121,12 +133,17 @@ class ModelWrapper(LightningModule):
         losses: list[Loss],
         step_tracker: StepTracker | None,
         distiller: Optional[nn.Module] = None,
+        anchor_selection_cfg: AnchorSelectionCfg | None = None,
+        debug_cfg: Any | None = None,
     ) -> None:
         super().__init__()
         self.optimizer_cfg = optimizer_cfg
         self.test_cfg = test_cfg
         self.train_cfg = train_cfg
+        self.anchor_selection_cfg = anchor_selection_cfg or AnchorSelectionCfg()
+        self.debug_cfg = debug_cfg
         self.step_tracker = step_tracker
+        self._warned_anchor_inactive_stages: set[str] = set()
 
         # Set up the model.
         self.encoder = encoder
@@ -134,6 +151,11 @@ class ModelWrapper(LightningModule):
         self.decoder = decoder
         self.data_shim = get_data_shim(self.encoder)
         self.losses = nn.ModuleList(losses)
+        if any(
+            bool(getattr(module, "reliability_enabled", False))
+            for module in self.encoder.modules()
+        ):
+            self.strict_loading = False
 
         self.gaussian_cap_rows: list[dict[str, str | int | float]] = []
 
@@ -155,6 +177,325 @@ class ModelWrapper(LightningModule):
             save_full_raw_maps=test_cfg.olp_raw_dump_full_maps,
         )
 
+    def _geo_loss_enabled(self) -> bool:
+        return any(
+            getattr(loss_fn, "name", None) == "geo"
+            and bool(getattr(loss_fn, "cfg", None).enabled)
+            and float(getattr(loss_fn, "cfg", None).weight) != 0.0
+            for loss_fn in self.losses
+        )
+
+    def _reliability_loss_enabled(self) -> bool:
+        return any(
+            getattr(loss_fn, "name", None) == "reliability"
+            and bool(getattr(loss_fn, "cfg", None).enabled)
+            and float(getattr(loss_fn, "cfg", None).weight) != 0.0
+            for loss_fn in self.losses
+        )
+
+    def _denormalize_context_image(self, image: Tensor) -> Tensor:
+        cfg = getattr(self.encoder, "cfg", None)
+        mean = getattr(cfg, "input_mean", (0.5, 0.5, 0.5))
+        std = getattr(cfg, "input_std", (0.5, 0.5, 0.5))
+        mean = torch.as_tensor(mean, dtype=image.dtype, device=image.device).view(
+            1, 1, 3, 1, 1
+        )
+        std = torch.as_tensor(std, dtype=image.dtype, device=image.device).view(
+            1, 1, 3, 1, 1
+        )
+        return (image * std + mean).clamp(0.0, 1.0)
+
+    def _flatten_reliability_dump(
+        self,
+        visualization_dump: dict,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        means = visualization_dump["means"]
+        reliability = visualization_dump["reliability"]
+        opacity_before = visualization_dump["opacities_before_reliability"]
+
+        means = rearrange(means, "b v h w g xyz -> b (v h w g) xyz")
+        reliability = rearrange(reliability, "b v h w s one -> b (v h w s) one")
+        opacity_before = rearrange(
+            opacity_before, "b v h w s one -> b (v h w s) one"
+        )
+
+        if means.shape[1] != reliability.shape[1]:
+            if means.shape[1] % reliability.shape[1] != 0:
+                raise RuntimeError(
+                    "Cannot align reliability gates with Gaussian centers: "
+                    f"means={tuple(means.shape)}, reliability={tuple(reliability.shape)}."
+                )
+            repeat_factor = means.shape[1] // reliability.shape[1]
+            reliability = reliability.repeat_interleave(repeat_factor, dim=1)
+            opacity_before = opacity_before.repeat_interleave(repeat_factor, dim=1)
+
+        return means, reliability, opacity_before
+
+    def _attach_reliability_intermediates(
+        self,
+        batch,
+        gaussians,
+        visualization_dump: dict | None,
+    ) -> None:
+        if not self._reliability_loss_enabled():
+            return
+        if visualization_dump is None:
+            raise RuntimeError(
+                "reliability loss requires encoder visualization_dump, but it was not created."
+            )
+        required = ["means", "reliability", "opacities_before_reliability"]
+        missing = [key for key in required if key not in visualization_dump]
+        if missing:
+            raise RuntimeError(
+                "reliability loss requires visualization_dump entries "
+                f"{required}, missing {missing}."
+            )
+
+        context = batch["context"]
+        means, reliability, opacity_before = self._flatten_reliability_dump(
+            visualization_dump
+        )
+        _, _, _, h_ctx, w_ctx = context["image"].shape
+        with torch.no_grad():
+            context_output = self.decoder.forward(
+                gaussians,
+                context["extrinsics"],
+                context["intrinsics"],
+                context["near"],
+                context["far"],
+                (h_ctx, w_ctx),
+                depth_mode=self.train_cfg.depth_mode,
+            )
+            context_gt = self._denormalize_context_image(context["image"]).to(
+                dtype=context_output.color.dtype
+            )
+            residual_map = (context_output.color - context_gt).abs().mean(
+                dim=2, keepdim=True
+            )
+            residual_map = residual_map.nan_to_num(
+                nan=0.0, posinf=1.0, neginf=0.0
+            ).clamp(0.0, 1.0)
+
+            xy, in_front = project(
+                means.detach()[:, None],
+                context["extrinsics"][:, :, None],
+                context["intrinsics"][:, :, None],
+            )
+            in_bounds = (xy >= 0.0).all(dim=-1) & (xy <= 1.0).all(dim=-1)
+            valid_per_view = in_front & in_bounds
+
+            b, v_ctx, _, _ = xy.shape
+            grid = xy.mul(2.0).sub(1.0)
+            grid = rearrange(grid, "b v g xy -> (b v) g 1 xy")
+            sampled = F.grid_sample(
+                rearrange(residual_map, "b v c h w -> (b v) c h w"),
+                grid,
+                mode="bilinear",
+                padding_mode="zeros",
+                align_corners=False,
+            )
+            sampled = rearrange(
+                sampled, "(b v) 1 g 1 -> b v g", b=b, v=v_ctx
+            )
+            valid_float = valid_per_view.to(dtype=sampled.dtype)
+            valid_count = valid_float.sum(dim=1).clamp_min(1.0)
+            residual_risk = (sampled * valid_float).sum(dim=1) / valid_count
+            valid_mask = valid_per_view.any(dim=1).unsqueeze(-1)
+
+        metadata = batch.setdefault("_reliability", {})
+        metadata["reliability"] = reliability
+        metadata["opacity_before_reliability"] = opacity_before
+        metadata["residual_risk"] = residual_risk.unsqueeze(-1)
+        metadata["valid_mask"] = valid_mask.to(dtype=reliability.dtype)
+        metadata["context_residual_mean"] = residual_map.mean()
+
+    def _anchor_selection_applies(self, stage: str) -> bool:
+        applies = anchor_selection_applies_to_stage(self.anchor_selection_cfg, stage)
+        cfg = self.anchor_selection_cfg
+        if (
+            bool(getattr(cfg, "enabled", False))
+            and getattr(cfg, "method", "none") != "none"
+            and not applies
+            and stage not in self._warned_anchor_inactive_stages
+        ):
+            warnings.warn(
+                "model.anchor_selection.enabled=true, but "
+                f"model.anchor_selection.apply_to={cfg.apply_to!r} excludes "
+                f"the current {stage!r} stage. Anchor selection is inactive for "
+                "this stage.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self._warned_anchor_inactive_stages.add(stage)
+        return applies
+
+    def _debug_anchor_enabled(self) -> bool:
+        debug_anchor = getattr(self.debug_cfg, "anchor", None)
+        return bool(
+            getattr(debug_anchor, "enabled", False)
+            or self.anchor_selection_cfg.debug_save_scores
+        )
+
+    def _debug_geo_enabled(self) -> bool:
+        debug_geo = getattr(self.debug_cfg, "geo", None)
+        return bool(getattr(debug_geo, "enabled", False))
+
+    def _prepare_anchorgeo_batch(self, batch, batch_idx: int, stage: str):
+        context = batch.get("context", {})
+        image = context.get("image")
+        if not isinstance(image, Tensor):
+            return batch
+
+        b = image.shape[0]
+        original_context_indices = context.get("index")
+        anchor_indices = torch.zeros(b, dtype=torch.long, device=image.device)
+        scores = None
+        anchor_selection_active = self._anchor_selection_applies(stage)
+        renormalized_cameras = False
+        unsafe_reorder = False
+
+        if anchor_selection_active:
+            anchor_indices, scores = select_anchor_indices(
+                batch,
+                self.anchor_selection_cfg,
+                return_scores=True,
+            )
+            renormalized_cameras = require_safe_anchor_reorder(
+                self.anchor_selection_cfg
+            )
+            if renormalized_cameras:
+                batch = renormalize_cameras_to_selected_anchor(batch, anchor_indices)
+            else:
+                unsafe_reorder = True
+                batch = reorder_context_fields(batch, anchor_indices)
+            self.log(
+                f"anchor/{stage}_selected_index_mean",
+                anchor_indices.float().mean(),
+            )
+            if scores is not None:
+                self.log(f"anchor/{stage}_score_mean", scores.float().mean())
+
+        reordered_anchor_indices = torch.zeros_like(anchor_indices)
+        metadata = dict(batch.get("_anchorgeo", {}))
+        metadata.update(
+            {
+                "original_anchor_indices": anchor_indices,
+                "anchor_indices": reordered_anchor_indices,
+                "anchor_scores": scores,
+                "camera_frame": (
+                    "original_context0" if unsafe_reorder else "context0"
+                ),
+                "camera_renormalized_to_anchor": renormalized_cameras,
+                "unsafe_reorder": unsafe_reorder,
+                "debug_geo_enabled": self._debug_geo_enabled(),
+            }
+        )
+        batch = dict(batch)
+        batch["_anchorgeo"] = metadata
+
+        self._maybe_save_anchor_debug(
+            batch,
+            stage=stage,
+            batch_idx=batch_idx,
+            selected_anchor_indices=anchor_indices,
+            original_context_indices=original_context_indices,
+            scores=scores,
+        )
+        return batch
+
+    @rank_zero_only
+    def _maybe_save_anchor_debug(
+        self,
+        batch,
+        *,
+        stage: str,
+        batch_idx: int,
+        selected_anchor_indices: Tensor,
+        original_context_indices: Tensor | None,
+        scores: Tensor | None,
+    ) -> None:
+        if not self._debug_anchor_enabled():
+            return
+        debug_anchor = getattr(self.debug_cfg, "anchor", None)
+        save_first_n = int(getattr(debug_anchor, "save_first_n_batches", 4))
+        if batch_idx >= save_first_n:
+            return
+        output_dir = getattr(debug_anchor, "output_dir", Path("debug_anchor"))
+        save_anchor_debug(
+            output_dir,
+            stage=stage,
+            batch_idx=batch_idx,
+            global_step=int(self.global_step),
+            selected_anchor_indices=selected_anchor_indices,
+            original_context_indices=original_context_indices,
+            reordered_context_indices=batch["context"].get("index"),
+            scores=scores,
+            scenes=batch.get("scene"),
+        )
+
+    def _attach_geo_intermediates(self, batch, visualization_dump: dict | None) -> None:
+        if visualization_dump is None:
+            return
+        metadata = batch.setdefault("_anchorgeo", {})
+        metadata["visualization_dump"] = visualization_dump
+        if "means" in visualization_dump:
+            metadata["canonical_points"] = visualization_dump["means"]
+            metadata["canonical_frame"] = "context0"
+            metadata["canonical_points_view_aligned"] = True
+            metadata["canonical_points_source"] = "visualization_dump['means']"
+
+    @rank_zero_only
+    def _maybe_save_geo_debug(self, loss_fn, batch_idx: int) -> None:
+        if not self._debug_geo_enabled():
+            return
+        debug_geo = getattr(self.debug_cfg, "geo", None)
+        save_first_n = int(getattr(debug_geo, "save_first_n_batches", 4))
+        if batch_idx >= save_first_n:
+            return
+        info = getattr(loss_fn, "last_info", None)
+        if not info:
+            return
+
+        output_dir = Path(getattr(debug_geo, "output_dir", Path("debug_geo")))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "batch_idx": batch_idx,
+            "global_step": int(self.global_step),
+            "loss_name": getattr(loss_fn, "name", "geo"),
+        }
+        for key, value in info.items():
+            if isinstance(value, Tensor) and value.ndim == 0:
+                payload[key] = float(value.detach().cpu().item())
+            elif isinstance(value, Tensor) and value.numel() == 1:
+                payload[key] = float(value.detach().reshape(()).cpu().item())
+            elif not isinstance(value, Tensor):
+                payload[key] = value
+        json_path = (
+            output_dir
+            / f"batch_{batch_idx:06d}_step_{int(self.global_step):06d}.json"
+        )
+        with json_path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+
+        valid_mask = info.get("valid_mask")
+        if isinstance(valid_mask, Tensor) and valid_mask.ndim == 4:
+            mask = valid_mask[0].float()
+            non_empty = mask.flatten(1).sum(dim=1) > 0
+            view_index = int(non_empty.nonzero()[0].item()) if non_empty.any() else 0
+            save_image(
+                mask[view_index],
+                output_dir
+                / f"valid_mask_batch_{batch_idx:06d}_step_{int(self.global_step):06d}.png",
+            )
+        weights = info.get("weights")
+        if isinstance(weights, Tensor) and weights.ndim == 4:
+            weight_map = weights[0].float()
+            save_image(
+                weight_map[0],
+                output_dir
+                / f"confidence_weight_batch_{batch_idx:06d}_step_{int(self.global_step):06d}.png",
+            )
+
     def training_step(self, batch, batch_idx):
         # combine batch from different dataloaders
         if isinstance(batch, list):
@@ -173,13 +514,20 @@ class ModelWrapper(LightningModule):
                             raise NotImplementedError
             batch = batch_combined
         batch: BatchedExample = self.data_shim(batch)
+        batch = self._prepare_anchorgeo_batch(batch, batch_idx, "train")
         _, _, _, h, w = batch["target"]["image"].shape
 
         # Run the model.
         visualization_dump = None
-        if self.distiller is not None:
+        if (
+            self.distiller is not None
+            or self._geo_loss_enabled()
+            or self._reliability_loss_enabled()
+        ):
             visualization_dump = {}
         gaussians = self.encoder(batch["context"], self.global_step, visualization_dump=visualization_dump)
+        self._attach_geo_intermediates(batch, visualization_dump)
+        self._attach_reliability_intermediates(batch, gaussians, visualization_dump)
         output = self.decoder.forward(
             gaussians,
             batch["target"]["extrinsics"],
@@ -203,6 +551,14 @@ class ModelWrapper(LightningModule):
         for loss_fn in self.losses:
             loss = loss_fn.forward(output, batch, gaussians, self.global_step)
             self.log(f"loss/{loss_fn.name}", loss)
+            if loss_fn.name == "geo" and getattr(loss_fn, "last_info", None):
+                valid_ratio = loss_fn.last_info.get("valid_ratio")
+                if isinstance(valid_ratio, Tensor):
+                    self.log("geo/valid_ratio", valid_ratio)
+                self._maybe_save_geo_debug(loss_fn, batch_idx)
+            if loss_fn.name == "reliability" and getattr(loss_fn, "last_info", None):
+                for key, value in loss_fn.last_info.items():
+                    self.log(f"reliability/{key}", value)
             total_loss = total_loss + loss
 
         preconditioner_stats = self.olp_eval_recorder.collect_preconditioner_stats(
@@ -241,7 +597,6 @@ class ModelWrapper(LightningModule):
             self.step_tracker.set_step(self.global_step)
 
         return total_loss
-
 
     def _gaussian_cap_ratios(self) -> list[float]:
         ratios = self.test_cfg.gaussian_cap_ratios
@@ -302,7 +657,9 @@ class ModelWrapper(LightningModule):
         for ratio in ratios:
             capped = self._cap_gaussians_by_opacity(gaussians, ratio)
             kept = int(capped.opacities.shape[1])
-            with self.benchmarker.time(f"decoder_cap_{int(round(ratio * 1000)):04d}", num_calls=v):
+            with self.benchmarker.time(
+                f"decoder_cap_{int(round(ratio * 1000)):04d}", num_calls=v
+            ):
                 output = self.decoder.forward(
                     capped,
                     batch["target"]["extrinsics"],
@@ -320,9 +677,15 @@ class ModelWrapper(LightningModule):
                     "kept_gaussians": kept,
                     "total_gaussians": total,
                     "kept_fraction": float(kept / total),
-                    "psnr_ours": float(compute_psnr(rgb_gt, rgb_pred).mean().detach().cpu()),
-                    "ssim_ours": float(compute_ssim(rgb_gt, rgb_pred).mean().detach().cpu()),
-                    "lpips_ours": float(compute_lpips(rgb_gt, rgb_pred).mean().detach().cpu()),
+                    "psnr_ours": float(
+                        compute_psnr(rgb_gt, rgb_pred).mean().detach().cpu()
+                    ),
+                    "ssim_ours": float(
+                        compute_ssim(rgb_gt, rgb_pred).mean().detach().cpu()
+                    ),
+                    "lpips_ours": float(
+                        compute_lpips(rgb_gt, rgb_pred).mean().detach().cpu()
+                    ),
                     "overlap": overlap if overlap is not None else "",
                     "overlap_tag": overlap_tag or "",
                     "cap_align_pose": 0,
@@ -346,9 +709,19 @@ class ModelWrapper(LightningModule):
 
         summary: dict[str, dict[str, float]] = {}
         for ratio in sorted({float(row["cap_ratio"]) for row in self.gaussian_cap_rows}):
-            rows = [row for row in self.gaussian_cap_rows if float(row["cap_ratio"]) == ratio]
+            rows = [
+                row
+                for row in self.gaussian_cap_rows
+                if float(row["cap_ratio"]) == ratio
+            ]
             item: dict[str, float] = {"n": float(len(rows))}
-            for metric in ("psnr_ours", "ssim_ours", "lpips_ours", "kept_gaussians", "kept_fraction"):
+            for metric in (
+                "psnr_ours",
+                "ssim_ours",
+                "lpips_ours",
+                "kept_gaussians",
+                "kept_fraction",
+            ):
                 values = [float(row[metric]) for row in rows if row.get(metric) != ""]
                 if values:
                     item[f"{metric}_mean"] = float(sum(values) / len(values))
@@ -359,6 +732,7 @@ class ModelWrapper(LightningModule):
 
     def test_step(self, batch, batch_idx):
         batch: BatchedExample = self.data_shim(batch)
+        batch = self._prepare_anchorgeo_batch(batch, batch_idx, "test")
 
         b, v, _, h, w = batch["target"]["image"].shape
         assert b == 1
@@ -496,6 +870,8 @@ class ModelWrapper(LightningModule):
                     # Compute and log loss.
                     total_loss = 0
                     for loss_fn in self.losses:
+                        if loss_fn.name == "geo":
+                            continue
                         loss = loss_fn.forward(output, batch, gaussians, self.global_step)
                         total_loss = total_loss + loss
 
@@ -538,6 +914,7 @@ class ModelWrapper(LightningModule):
     @rank_zero_only
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         batch: BatchedExample = self.data_shim(batch)
+        batch = self._prepare_anchorgeo_batch(batch, batch_idx, "test")
 
         if self.global_rank == 0:
             print(

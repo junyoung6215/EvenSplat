@@ -41,3 +41,9 @@ orthogonal_preconditioner:
   warmup_steps: 5000
   seed: 0
   collect_stats: false
+
+gaussian_reliability:
+  enabled: false
+  r_min: 0.05
+  r_init: 0.95
+  detach_gate: false

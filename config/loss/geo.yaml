@@ -1,0 +1,12 @@
+geo:
+  enabled: false
+  weight: 0.0
+  robust: charbonnier
+  charbonnier_eps: 1.0e-3
+  visibility_depth_threshold: 0.05
+  use_confidence_weight: true
+  stop_gradient_anchor: true
+  min_valid_pixels: 128
+  debug: false
+  coordinate_frame: context0
+  allow_ambiguous_frame: false
