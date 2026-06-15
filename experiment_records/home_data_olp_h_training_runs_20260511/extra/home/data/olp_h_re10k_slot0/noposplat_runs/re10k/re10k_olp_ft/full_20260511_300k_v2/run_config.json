@@ -1,0 +1,56 @@
+{
+  "cache_root": "/home/data/olp_h_re10k_slot0/runtime_cache",
+  "check_env": true,
+  "cuda_visible_devices": 0,
+  "data_loader": {
+    "test_num_workers": 4,
+    "train_num_workers": 16,
+    "val_num_workers": 1
+  },
+  "data_root": "datasets/re10k",
+  "eval": {
+    "index_path": "assets/evaluation_index_re10k.json",
+    "name": "re10k_olp_ft_eval",
+    "olp_adaptive_tau_scale_quantile": 0.95,
+    "olp_enabled": true,
+    "olp_mix": 1.0,
+    "olp_target_mix": 1.0,
+    "olp_tau_alpha": 0.95,
+    "olp_tau_scale": null,
+    "olp_tau_volume": null,
+    "save_image": false,
+    "save_olp_stats": true
+  },
+  "min_free_gb": 30,
+  "name": "re10k_olp_ft",
+  "olp": {
+    "collect_stats": true,
+    "dim": 256,
+    "enabled": true,
+    "mix": 0.0,
+    "mode": "hadamard",
+    "seed": 0,
+    "target_mix": 1.0,
+    "warmup_steps": 1500
+  },
+  "preset_path": "/workspace/olp_h_re10k_slot0/NoPoSplat/config/experiment_runs/re10k_olp_ft.yaml",
+  "pretrained_weights": "./pretrained_weights/re10k.ckpt",
+  "resolved_root_dir": "/home/data/olp_h_re10k_slot0/noposplat_runs/re10k/re10k_olp_ft/full_20260511_300k_v2",
+  "run_id": "full_20260511_300k_v2",
+  "stage": "train",
+  "storage_root": "/home/data/olp_h_re10k_slot0/noposplat_runs/re10k",
+  "train": {
+    "batch_size": 4,
+    "checkpoint_load": null,
+    "ckpt_every": 1000,
+    "lr": 0.0002,
+    "max_steps": 300001,
+    "num_sanity_val_steps": 0,
+    "print_log_every_n_steps": 100,
+    "save_top_k": 1,
+    "save_weights_only": false,
+    "val_check_interval": 100000000,
+    "warmup_steps": 1500
+  },
+  "wandb_mode": "disabled"
+}
