@@ -1,0 +1,57 @@
+/root/miniconda3/envs/noposplat-olp-cu118-clean/bin/python scripts/check_cuda118_env.py --output-dir /home/data/olp_h_re10k_slot0/noposplat_runs/re10k/re10k_olp_ft/full_20260511_300k
+{
+  "cc": "/root/miniconda3/envs/noposplat-olp-cuda118-slot0/bin/x86_64-conda-linux-gnu-cc",
+  "conda_lib_cudart12": [
+    "/root/miniconda3/envs/noposplat-olp-cuda118-slot0/lib/libcudart.so.12.9.79",
+    "/root/miniconda3/envs/noposplat-olp-cuda118-slot0/lib/libcudart.so.12"
+  ],
+  "conda_prefix": "/root/miniconda3/envs/noposplat-olp-cuda118-slot0",
+  "cuda_available": true,
+  "cuda_home": "",
+  "cuda_path": "",
+  "cuda_type_traits_exists": true,
+  "cuda_type_traits_path": "/root/miniconda3/envs/noposplat-olp-cuda118-slot0/include/cuda/std/type_traits",
+  "cv2_import_error": "",
+  "cv2_import_ok": true,
+  "cxx": "/root/miniconda3/envs/noposplat-olp-cuda118-slot0/bin/x86_64-conda-linux-gnu-c++",
+  "diff_gaussian_rasterization_extension_path": "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/diff_gaussian_rasterization/_C.cpython-310-x86_64-linux-gnu.so",
+  "diff_gaussian_rasterization_import_error": "",
+  "diff_gaussian_rasterization_import_ok": true,
+  "diff_gaussian_rasterization_ldd": "\tlinux-vdso.so.1 (0x00007fff0f9fc000)\n\tlibc10.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libc10.so (0x00007f3da20a3000)\n\tlibtorch_cpu.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so (0x00007f3d8ab31000)\n\tlibtorch_python.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libtorch_python.so (0x00007f3d898b7000)\n\tlibcudart.so.11.0 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/libcudart.so.11.0 (0x00007f3d89600000)\n\tlibstdc++.so.6 => /lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007f3d893d4000)\n\tlibgcc_s.so.1 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/libgcc_s.so.1 (0x00007f3d893a7000)\n\tlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f3d8917e000)\n\tlibm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007f3d89097000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007f3da2259000)\n\tlibrt.so.1 => /lib/x86_64-linux-gnu/librt.so.1 (0x00007f3d898ab000)\n\tlibdl.so.2 => /lib/x86_64-linux-gnu/libdl.so.2 (0x00007f3d89092000)\n\tlibpthread.so.0 => /lib/x86_64-linux-gnu/libpthread.so.0 (0x00007f3d8908d000)\n\tlibgomp-a34b3233.so.1 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libgomp-a34b3233.so.1 (0x00007f3d88e00000)\n\tlibshm.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libshm.so (0x00007f3d89081000)\n\tlibtorch.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libtorch.so (0x00007f3d89062000)\n\tlibnvToolsExt-847d78f2.so.1 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libnvToolsExt-847d78f2.so.1 (0x00007f3d88a00000)\n\tlibtorch_cuda.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libtorch_cuda.so (0x00007f3d3594b000)\n\tlibc10_cuda.so => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libc10_cuda.so (0x00007f3d88cdf000)\n\tlibcudnn.so.8 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libcudnn.so.8 (0x00007f3d35600000)\n\tlibcudart-d0da41ae.so.11.0 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libcudart-d0da41ae.so.11.0 (0x00007f3d35200000)\n\tlibcublas.so.11 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libcublas.so.11 (0x00007f3d2f400000)\n\tlibcublasLt.so.11 => /root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/site-packages/torch/lib/libcublasLt.so.11 (0x00007f3d0ae00000)\n",
+  "diff_gaussian_rasterization_ldd_exit_code": 0,
+  "gcc_exit_code": 0,
+  "gcc_version": "gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+  "gpu_count": 1,
+  "gpu_names": [
+    "NVIDIA A100-SXM4-80GB MIG 3g.40gb"
+  ],
+  "gxx_exit_code": 0,
+  "gxx_version": "g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+  "nvcc_exit_code": 0,
+  "nvcc_version": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2022 NVIDIA Corporation\nBuilt on Wed_Sep_21_10:33:58_PDT_2022\nCuda compilation tools, release 11.8, V11.8.89\nBuild cuda_11.8.r11.8/compiler.31833905_0\n",
+  "nvidia_smi_query": "NVIDIA A100-SXM4-80GB, 535.183.01, [Insufficient Permissions]\n",
+  "nvidia_smi_query_exit_code": 0,
+  "pin_mismatches": [],
+  "platform": "Linux-5.4.0-192-generic-x86_64-with-glibc2.35",
+  "python": "3.10.13 | packaged by conda-forge | (main, Dec 23 2023, 15:36:39) [GCC 12.3.0]",
+  "required_gpu_name": null,
+  "torch": "2.1.2+cu118",
+  "torch_cuda": "11.8"
+}
+
+Environment check failed:
+- CONDA_PREFIX/lib contains CUDA 12 libcudart; use a clean CUDA 11.8 env
+Traceback (most recent call last):
+  File "/workspace/olp_h_re10k_slot0/NoPoSplat/scripts/run_re10k.py", line 61, in <module>
+    main()
+  File "/workspace/olp_h_re10k_slot0/NoPoSplat/scripts/run_re10k.py", line 44, in main
+    run(
+  File "/workspace/olp_h_re10k_slot0/NoPoSplat/src/experiment_runner/runner.py", line 229, in run
+    run_env_check(config, paths)
+  File "/workspace/olp_h_re10k_slot0/NoPoSplat/src/experiment_runner/runner.py", line 199, in run_env_check
+    run_command(command, config=config)
+  File "/workspace/olp_h_re10k_slot0/NoPoSplat/src/experiment_runner/runner.py", line 182, in run_command
+    subprocess.run(
+  File "/root/miniconda3/envs/noposplat-olp-cu118-clean/lib/python3.10/subprocess.py", line 526, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/root/miniconda3/envs/noposplat-olp-cu118-clean/bin/python', 'scripts/check_cuda118_env.py', '--output-dir', '/home/data/olp_h_re10k_slot0/noposplat_runs/re10k/re10k_olp_ft/full_20260511_300k']' returned non-zero exit status 1.

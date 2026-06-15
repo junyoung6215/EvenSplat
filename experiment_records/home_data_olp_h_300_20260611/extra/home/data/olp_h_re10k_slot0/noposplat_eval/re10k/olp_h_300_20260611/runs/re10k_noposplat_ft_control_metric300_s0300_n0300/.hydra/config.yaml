@@ -1,0 +1,153 @@
+model:
+  encoder:
+    backbone:
+      name: croco
+      model: ViTLarge_BaseDecoder
+      patch_embed_cls: PatchEmbedDust3R
+      asymmetry_decoder: true
+      intrinsics_embed_loc: encoder
+      intrinsics_embed_degree: 4
+      intrinsics_embed_type: token
+    name: noposplat
+    opacity_mapping:
+      initial: 0.0
+      final: 0.0
+      warm_up: 1
+    num_monocular_samples: 32
+    num_surfaces: 1
+    predict_opacity: false
+    gaussians_per_pixel: 1
+    gaussian_adapter:
+      gaussian_scale_min: 0.5
+      gaussian_scale_max: 15.0
+      sh_degree: 4
+    d_feature: 128
+    visualizer:
+      num_samples: 8
+      min_resolution: 256
+      export_ply: false
+    apply_bounds_shim: true
+    gs_params_head_type: dpt_gs
+    pose_free: true
+    pretrained_weights: ./pretrained_weights/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth
+    orthogonal_preconditioner:
+      enabled: false
+      mode: hadamard
+      dim: 256
+      mix: 0.0
+      target_mix: 0.0
+      warmup_steps: 0
+      seed: 0
+      collect_stats: false
+    intrinsics_embed_loc: encoder
+    intrinsics_embed_type: token
+  decoder:
+    name: splatting_cuda
+    background_color:
+    - 0.0
+    - 0.0
+    - 0.0
+    make_scale_invariant: true
+loss:
+  mse:
+    weight: 1.0
+  lpips:
+    weight: 0.05
+    apply_after_step: 0
+wandb:
+  project: noposplat
+  entity: scene-representation-group
+  name: re10k_noposplat_ft_control_metric300_s0300_n0300
+  mode: disabled
+  tags:
+  - re10k
+  - 256x256
+mode: test
+data_loader:
+  train:
+    num_workers: 16
+    persistent_workers: true
+    batch_size: 16
+    seed: 1234
+  test:
+    num_workers: 2
+    persistent_workers: false
+    batch_size: 1
+    seed: 2345
+  val:
+    num_workers: 1
+    persistent_workers: true
+    batch_size: 1
+    seed: 3456
+optimizer:
+  lr: 0.0002
+  warm_up_steps: 125
+  backbone_lr_multiplier: 0.1
+checkpointing:
+  load: pretrained_weights/re10k.ckpt
+  every_n_train_steps: 9375
+  save_top_k: 1
+  save_weights_only: true
+train:
+  depth_mode: null
+  extended_visualization: false
+  print_log_every_n_steps: 10
+  distiller: ''
+  distill_max_steps: 1000000
+test:
+  output_path: /home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/test_outputs
+  align_pose: true
+  pose_align_steps: 100
+  rot_opt_lr: 0.005
+  trans_opt_lr: 0.005
+  compute_scores: true
+  save_image: false
+  save_video: false
+  save_compare: false
+  save_olp_stats: true
+  olp_tau_alpha: 0.95
+  olp_tau_scale: null
+  olp_tau_volume: null
+  olp_adaptive_tau_scale_quantile: 0.95
+seed: 111123
+trainer:
+  max_steps: 18751
+  val_check_interval: 500
+  num_sanity_val_steps: 2
+  gradient_clip_val: 0.5
+  num_nodes: 1
+dataset:
+  re10k:
+    make_baseline_1: true
+    relative_pose: true
+    augment: true
+    background_color:
+    - 0.0
+    - 0.0
+    - 0.0
+    overfit_to_scene: null
+    skip_bad_shape: true
+    view_sampler:
+      name: evaluation
+      index_path: /home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/evaluation_index_re10k_metric300_s0300_n0300.json
+      num_context_views: 2
+      num_target_views: 4
+      warm_up_steps: 9375
+      min_distance_between_context_views: 45
+      max_distance_between_context_views: 90
+      min_distance_to_context_views: 0
+      initial_min_distance_between_context_views: 25
+      initial_max_distance_between_context_views: 25
+    name: re10k
+    roots:
+    - datasets/re10k
+    input_image_shape:
+    - 256
+    - 256
+    original_image_shape:
+    - 360
+    - 640
+    cameras_are_circular: false
+    baseline_min: 0.001
+    baseline_max: 10000000000.0
+    max_fov: 100.0

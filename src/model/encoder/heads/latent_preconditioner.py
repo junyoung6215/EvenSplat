@@ -8,7 +8,7 @@ from torch import Tensor, nn
 
 from .preconditioner_cfg import cfg_get
 from .preconditioner_math import fwht_last_dim, is_power_of_two
-from .preconditioner_stats import summarize_latent_pair
+from .preconditioner_stats import channel_outlier_maps, channel_outlier_top_locations, summarize_latent_pair
 
 
 class RandomizedHadamardPreconditioner(nn.Module):
@@ -69,6 +69,8 @@ class RandomizedHadamardPreconditioner(nn.Module):
         self.collect_stats = collect_stats
         self.current_step = 0
         self.latest_stats: dict[str, float] = {}
+        self.latest_outlier_dump: dict[str, object] = {}
+        self.latest_outlier_maps: dict[str, object] = {}
 
         self.register_buffer("permutation", permutation, persistent=False)
         self.register_buffer("signs", signs, persistent=False)
@@ -101,6 +103,8 @@ class RandomizedHadamardPreconditioner(nn.Module):
 
     def _collect_stats(self, x: Tensor, y: Tensor, mix: float) -> None:
         self.latest_stats = summarize_latent_pair(x, y, mix)
+        self.latest_outlier_dump = channel_outlier_top_locations(y, "output")
+        self.latest_outlier_maps = channel_outlier_maps(y, "output")
 
     def forward(self, x: Tensor) -> Tensor:
         if not self.enabled:
