@@ -10,6 +10,7 @@ set -euo pipefail
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export BASELINE_CKPT="${BASELINE_CKPT:-./pretrained_weights/re10k.ckpt}"
 export BATCH_SIZE="${BATCH_SIZE:-8}"
+export ACCUMULATE_GRAD_BATCHES="${ACCUMULATE_GRAD_BATCHES:-1}"
 export MAX_STEPS="${MAX_STEPS:-18751}"
 export LR="${LR:-2e-4}"
 export OLP_SEED="${OLP_SEED:-0}"

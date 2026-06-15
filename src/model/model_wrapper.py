@@ -6,6 +6,7 @@ from typing import Any, Optional, Protocol, runtime_checkable
 
 import moviepy.editor as mpy
 import torch
+import torch.nn.functional as F
 import wandb
 from einops import pack, rearrange, repeat
 from jaxtyping import Float
@@ -19,6 +20,7 @@ from ..analysis.olp_eval_recorder import OlpEvalRecorder
 from ..dataset.data_module import get_data_shim
 from ..dataset.types import BatchedExample
 from ..evaluation.metrics import compute_lpips, compute_psnr, compute_ssim
+from ..geometry.projection import project
 from ..global_cfg import get_cfg
 from ..loss import Loss
 from ..loss.loss_point import Regr3D
@@ -170,6 +172,130 @@ class ModelWrapper(LightningModule):
             and float(getattr(loss_fn, "cfg", None).weight) != 0.0
             for loss_fn in self.losses
         )
+
+    def _reliability_loss_enabled(self) -> bool:
+        return any(
+            getattr(loss_fn, "name", None) == "reliability"
+            and bool(getattr(loss_fn, "cfg", None).enabled)
+            and float(getattr(loss_fn, "cfg", None).weight) != 0.0
+            for loss_fn in self.losses
+        )
+
+    def _denormalize_context_image(self, image: Tensor) -> Tensor:
+        cfg = getattr(self.encoder, "cfg", None)
+        mean = getattr(cfg, "input_mean", (0.5, 0.5, 0.5))
+        std = getattr(cfg, "input_std", (0.5, 0.5, 0.5))
+        mean = torch.as_tensor(mean, dtype=image.dtype, device=image.device).view(
+            1, 1, 3, 1, 1
+        )
+        std = torch.as_tensor(std, dtype=image.dtype, device=image.device).view(
+            1, 1, 3, 1, 1
+        )
+        return (image * std + mean).clamp(0.0, 1.0)
+
+    def _flatten_reliability_dump(
+        self,
+        visualization_dump: dict,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        means = visualization_dump["means"]
+        reliability = visualization_dump["reliability"]
+        opacity_before = visualization_dump["opacities_before_reliability"]
+
+        means = rearrange(means, "b v h w g xyz -> b (v h w g) xyz")
+        reliability = rearrange(reliability, "b v h w s one -> b (v h w s) one")
+        opacity_before = rearrange(
+            opacity_before, "b v h w s one -> b (v h w s) one"
+        )
+
+        if means.shape[1] != reliability.shape[1]:
+            if means.shape[1] % reliability.shape[1] != 0:
+                raise RuntimeError(
+                    "Cannot align reliability gates with Gaussian centers: "
+                    f"means={tuple(means.shape)}, reliability={tuple(reliability.shape)}."
+                )
+            repeat_factor = means.shape[1] // reliability.shape[1]
+            reliability = reliability.repeat_interleave(repeat_factor, dim=1)
+            opacity_before = opacity_before.repeat_interleave(repeat_factor, dim=1)
+
+        return means, reliability, opacity_before
+
+    def _attach_reliability_intermediates(
+        self,
+        batch,
+        gaussians,
+        visualization_dump: dict | None,
+    ) -> None:
+        if not self._reliability_loss_enabled():
+            return
+        if visualization_dump is None:
+            raise RuntimeError(
+                "reliability loss requires encoder visualization_dump, but it was not created."
+            )
+        required = ["means", "reliability", "opacities_before_reliability"]
+        missing = [key for key in required if key not in visualization_dump]
+        if missing:
+            raise RuntimeError(
+                "reliability loss requires visualization_dump entries "
+                f"{required}, missing {missing}."
+            )
+
+        context = batch["context"]
+        means, reliability, opacity_before = self._flatten_reliability_dump(
+            visualization_dump
+        )
+        _, _, _, h_ctx, w_ctx = context["image"].shape
+        with torch.no_grad():
+            context_output = self.decoder.forward(
+                gaussians,
+                context["extrinsics"],
+                context["intrinsics"],
+                context["near"],
+                context["far"],
+                (h_ctx, w_ctx),
+                depth_mode=self.train_cfg.depth_mode,
+            )
+            context_gt = self._denormalize_context_image(context["image"]).to(
+                dtype=context_output.color.dtype
+            )
+            residual_map = (context_output.color - context_gt).abs().mean(
+                dim=2, keepdim=True
+            )
+            residual_map = residual_map.nan_to_num(
+                nan=0.0, posinf=1.0, neginf=0.0
+            ).clamp(0.0, 1.0)
+
+            xy, in_front = project(
+                means.detach()[:, None],
+                context["extrinsics"][:, :, None],
+                context["intrinsics"][:, :, None],
+            )
+            in_bounds = (xy >= 0.0).all(dim=-1) & (xy <= 1.0).all(dim=-1)
+            valid_per_view = in_front & in_bounds
+
+            b, v_ctx, _, _ = xy.shape
+            grid = xy.mul(2.0).sub(1.0)
+            grid = rearrange(grid, "b v g xy -> (b v) g 1 xy")
+            sampled = F.grid_sample(
+                rearrange(residual_map, "b v c h w -> (b v) c h w"),
+                grid,
+                mode="bilinear",
+                padding_mode="zeros",
+                align_corners=False,
+            )
+            sampled = rearrange(
+                sampled, "(b v) 1 g 1 -> b v g", b=b, v=v_ctx
+            )
+            valid_float = valid_per_view.to(dtype=sampled.dtype)
+            valid_count = valid_float.sum(dim=1).clamp_min(1.0)
+            residual_risk = (sampled * valid_float).sum(dim=1) / valid_count
+            valid_mask = valid_per_view.any(dim=1).unsqueeze(-1)
+
+        metadata = batch.setdefault("_reliability", {})
+        metadata["reliability"] = reliability
+        metadata["opacity_before_reliability"] = opacity_before
+        metadata["residual_risk"] = residual_risk.unsqueeze(-1)
+        metadata["valid_mask"] = valid_mask.to(dtype=reliability.dtype)
+        metadata["context_residual_mean"] = residual_map.mean()
 
     def _anchor_selection_applies(self, stage: str) -> bool:
         applies = anchor_selection_applies_to_stage(self.anchor_selection_cfg, stage)
@@ -381,10 +507,15 @@ class ModelWrapper(LightningModule):
 
         # Run the model.
         visualization_dump = None
-        if self.distiller is not None or self._geo_loss_enabled():
+        if (
+            self.distiller is not None
+            or self._geo_loss_enabled()
+            or self._reliability_loss_enabled()
+        ):
             visualization_dump = {}
         gaussians = self.encoder(batch["context"], self.global_step, visualization_dump=visualization_dump)
         self._attach_geo_intermediates(batch, visualization_dump)
+        self._attach_reliability_intermediates(batch, gaussians, visualization_dump)
         output = self.decoder.forward(
             gaussians,
             batch["target"]["extrinsics"],
@@ -413,6 +544,9 @@ class ModelWrapper(LightningModule):
                 if isinstance(valid_ratio, Tensor):
                     self.log("geo/valid_ratio", valid_ratio)
                 self._maybe_save_geo_debug(loss_fn, batch_idx)
+            if loss_fn.name == "reliability" and getattr(loss_fn, "last_info", None):
+                for key, value in loss_fn.last_info.items():
+                    self.log(f"reliability/{key}", value)
             total_loss = total_loss + loss
 
         preconditioner_stats = self.olp_eval_recorder.collect_preconditioner_stats(

@@ -155,6 +155,31 @@ label이 아니라 weak risk signal로만 사용해야 한다.
 붙이는 단계다. 따라서 첫 residual 실험은 기존 Gaussian opacity/scale head를 직접
 흔들지 않는 보수적인 식으로 시작한다.
 
+구현 config는 `config/loss/reliability.yaml`에 있다. 기본값은 disabled라서
+loss list에 추가하고 명시적으로 켜야 한다.
+
+```yaml
+loss:
+  reliability:
+    enabled: true
+    weight: 1.0e-4
+    warmup_start: 3000
+    warmup_end: 8000
+```
+
+예시 실행 override:
+
+```bash
+python -m src.main +experiment=re10k mode=train \
+  loss=[mse,reliability] \
+  model.encoder.gaussian_reliability.enabled=true \
+  loss.reliability.enabled=true \
+  loss.reliability.weight=1.0e-4 \
+  loss.reliability.warmup_start=3000 \
+  loss.reliability.warmup_end=8000
+```
+
+
 1차 MVP loss:
 
 ```text

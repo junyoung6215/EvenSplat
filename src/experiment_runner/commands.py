@@ -59,6 +59,7 @@ def build_train_command(config: dict[str, Any], run_dir: Path) -> Command:
         f"trainer.max_steps={require(config, 'train.max_steps')}",
         f"trainer.num_sanity_val_steps={get_cfg(train, 'num_sanity_val_steps', 0)}",
         f"trainer.val_check_interval={get_cfg(train, 'val_check_interval', 100000000)}",
+        f"trainer.accumulate_grad_batches={get_cfg(train, 'accumulate_grad_batches', 1)}",
         f"optimizer.lr={require(config, 'train.lr')}",
         f"data_loader.train.batch_size={require(config, 'train.batch_size')}",
         f"data_loader.train.num_workers={get_cfg(data_loader, 'train_num_workers', 16)}",

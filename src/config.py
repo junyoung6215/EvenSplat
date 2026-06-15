@@ -55,6 +55,7 @@ class TrainerCfg:
     val_check_interval: int | float | None
     num_sanity_val_steps: int
     gradient_clip_val: int | float | None
+    accumulate_grad_batches: int = 1
     limit_test_batches: int | float | None = None
     num_nodes: int = 1
 

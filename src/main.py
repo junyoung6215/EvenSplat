@@ -127,6 +127,7 @@ def train(cfg_dict: DictConfig):
         check_val_every_n_epoch=None,
         enable_progress_bar=False,
         gradient_clip_val=cfg.trainer.gradient_clip_val,
+        accumulate_grad_batches=cfg.trainer.accumulate_grad_batches,
         max_steps=cfg.trainer.max_steps,
         limit_test_batches=cfg.trainer.limit_test_batches,
         # plugins=[SLURMEnvironment(requeue_signal=signal.SIGUSR1)],  # Uncomment for SLURM auto resubmission.

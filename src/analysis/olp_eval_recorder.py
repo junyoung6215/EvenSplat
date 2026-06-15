@@ -8,7 +8,13 @@ from typing import Any
 import torch
 from torch import nn
 
-from .olp_stats import gaussian_tail_stats, merge_stats, save_stats_json
+from .olp_stats import (
+    gaussian_tail_stats,
+    merge_stats,
+    opacity_reliability_effect_stats,
+    reliability_stats,
+    save_stats_json,
+)
 
 
 class OlpEvalRecorder:
@@ -70,6 +76,15 @@ class OlpEvalRecorder:
                 adaptive_tau_scale_quantile=self.adaptive_tau_scale_quantile,
             )
         )
+        if "opacities_before_reliability" in visualization_dump:
+            stats.update(
+                opacity_reliability_effect_stats(
+                    visualization_dump["opacities_before_reliability"],
+                    visualization_dump["opacities"],
+                )
+            )
+        if "reliability" in visualization_dump:
+            stats.update(reliability_stats(visualization_dump["reliability"]))
         if metrics is not None:
             stats.update(
                 {
