@@ -10,6 +10,7 @@ config 전달과 head 호출을 위한 얇은 연결부만 있습니다.
 - 서버 실행 runbook: `docs/SERVER_RUNBOOK_KO.md`
 - 한글 변경 보고서: `docs/OLP_H_DIFF_REPORT_KO.md`
 - 영어 변경 보고서: `docs/OLP_H_DIFF_REPORT_EN.md`
+- GitHub 실험 보존 가이드: `docs/GITHUB_EXPERIMENT_ARCHIVE_KO.md`
 - CUDA 11.8 package lock: `env/requirements-cuda118.lock`
 - CUDA 11.8 conda 환경: `env/environment-cuda118.yml`
 
@@ -129,6 +130,20 @@ nohup bash scripts/run_re10k_overnight_protocol.sh \
 
 자세한 실행 순서와 산출물은 `docs/OLP_H_EXPERIMENT_PROTOCOL_KO.md`를
 확인합니다.
+
+GitHub에 올릴 분석 산출물만 모으려면 다음 스크립트를 사용합니다.
+
+```bash
+python scripts/archive_re10k_experiment_artifacts.py \
+  --name re10k_olp_h_main_2026 \
+  --include-images \
+  --max-images 12
+```
+
+이 스크립트는 `outputs/olp_re10k`에서 `benchmark.json`, OLP-H stats,
+`.hydra`, `command.sh`, fingerprint, log 같은 작은 재현/분석 파일만
+`experiment_records/`로 복사합니다. smoke/sanity 결과와 checkpoint/dataset은
+기본적으로 GitHub 보존 대상에서 제외합니다.
 
 ## OLP-H 핵심 설정
 

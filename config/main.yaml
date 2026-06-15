@@ -89,6 +89,11 @@ test:
   olp_tau_scale: null
   olp_tau_volume: null
   olp_adaptive_tau_scale_quantile: 0.95
+  save_gaussian_cap_stats: false
+  gaussian_cap_ratios: null
+  olp_raw_dump: false
+  olp_raw_dump_max_locations: 256
+  olp_raw_dump_full_maps: false
 
 seed: 111123
 
