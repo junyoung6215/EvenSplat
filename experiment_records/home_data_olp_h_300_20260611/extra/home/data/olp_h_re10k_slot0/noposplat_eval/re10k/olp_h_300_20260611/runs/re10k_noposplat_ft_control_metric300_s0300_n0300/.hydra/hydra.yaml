@@ -1,0 +1,186 @@
+hydra:
+  run:
+    dir: /home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/runs/re10k_noposplat_ft_control_metric300_s0300_n0300
+  sweep:
+    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
+  launcher:
+    _target_: hydra._internal.core_plugins.basic_launcher.BasicLauncher
+  sweeper:
+    _target_: hydra._internal.core_plugins.basic_sweeper.BasicSweeper
+    max_batch_size: null
+    params: null
+  help:
+    app_name: ${hydra.job.name}
+    header: '${hydra.help.app_name} is powered by Hydra.
+
+      '
+    footer: 'Powered by Hydra (https://hydra.cc)
+
+      Use --hydra-help to view Hydra specific help
+
+      '
+    template: '${hydra.help.header}
+
+      == Configuration groups ==
+
+      Compose your configuration from those groups (group=option)
+
+
+      $APP_CONFIG_GROUPS
+
+
+      == Config ==
+
+      Override anything in the config (foo.bar=value)
+
+
+      $CONFIG
+
+
+      ${hydra.help.footer}
+
+      '
+  hydra_help:
+    template: 'Hydra (${hydra.runtime.version})
+
+      See https://hydra.cc for more info.
+
+
+      == Flags ==
+
+      $FLAGS_HELP
+
+
+      == Configuration groups ==
+
+      Compose your configuration from those groups (For example, append hydra/job_logging=disabled
+      to command line)
+
+
+      $HYDRA_CONFIG_GROUPS
+
+
+      Use ''--cfg hydra'' to Show the Hydra config.
+
+      '
+    hydra_help: ???
+  hydra_logging:
+    version: 1
+    formatters:
+      simple:
+        format: '[%(asctime)s][HYDRA] %(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: simple
+        stream: ext://sys.stdout
+    root:
+      level: INFO
+      handlers:
+      - console
+    loggers:
+      logging_example:
+        level: DEBUG
+    disable_existing_loggers: false
+  job_logging:
+    version: 1
+    formatters:
+      simple:
+        format: '[%(asctime)s][%(name)s][%(levelname)s] - %(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: simple
+        stream: ext://sys.stdout
+      file:
+        class: logging.FileHandler
+        formatter: simple
+        filename: ${hydra.runtime.output_dir}/${hydra.job.name}.log
+    root:
+      level: INFO
+      handlers:
+      - console
+      - file
+    disable_existing_loggers: false
+  env: {}
+  mode: RUN
+  searchpath: []
+  callbacks: {}
+  output_subdir: .hydra
+  overrides:
+    hydra:
+    - hydra.run.dir=/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/runs/re10k_noposplat_ft_control_metric300_s0300_n0300
+    - hydra.mode=RUN
+    task:
+    - +experiment=re10k
+    - mode=test
+    - wandb.mode=disabled
+    - wandb.name=re10k_noposplat_ft_control_metric300_s0300_n0300
+    - dataset/view_sampler@dataset.re10k.view_sampler=evaluation
+    - dataset.re10k.view_sampler.index_path=/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/evaluation_index_re10k_metric300_s0300_n0300.json
+    - dataset.re10k.roots=[datasets/re10k]
+    - checkpointing.load=pretrained_weights/re10k.ckpt
+    - model.encoder.orthogonal_preconditioner.enabled=false
+    - model.encoder.orthogonal_preconditioner.mode=hadamard
+    - model.encoder.orthogonal_preconditioner.dim=256
+    - model.encoder.orthogonal_preconditioner.mix=0.0
+    - model.encoder.orthogonal_preconditioner.target_mix=0.0
+    - model.encoder.orthogonal_preconditioner.warmup_steps=0
+    - model.encoder.orthogonal_preconditioner.seed=0
+    - model.encoder.orthogonal_preconditioner.collect_stats=false
+    - test.save_image=false
+    - data_loader.test.num_workers=2
+    - test.save_olp_stats=true
+    - test.olp_tau_alpha=0.95
+    - test.olp_tau_scale=null
+    - test.olp_tau_volume=null
+    - test.olp_adaptive_tau_scale_quantile=0.95
+    - test.output_path=/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/test_outputs
+  job:
+    name: main
+    chdir: null
+    override_dirname: +experiment=re10k,checkpointing.load=pretrained_weights/re10k.ckpt,data_loader.test.num_workers=2,dataset.re10k.roots=[datasets/re10k],dataset.re10k.view_sampler.index_path=/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/evaluation_index_re10k_metric300_s0300_n0300.json,dataset/view_sampler@dataset.re10k.view_sampler=evaluation,mode=test,model.encoder.orthogonal_preconditioner.collect_stats=false,model.encoder.orthogonal_preconditioner.dim=256,model.encoder.orthogonal_preconditioner.enabled=false,model.encoder.orthogonal_preconditioner.mix=0.0,model.encoder.orthogonal_preconditioner.mode=hadamard,model.encoder.orthogonal_preconditioner.seed=0,model.encoder.orthogonal_preconditioner.target_mix=0.0,model.encoder.orthogonal_preconditioner.warmup_steps=0,test.olp_adaptive_tau_scale_quantile=0.95,test.olp_tau_alpha=0.95,test.olp_tau_scale=null,test.olp_tau_volume=null,test.output_path=/home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/test_outputs,test.save_image=false,test.save_olp_stats=true,wandb.mode=disabled,wandb.name=re10k_noposplat_ft_control_metric300_s0300_n0300
+    id: ???
+    num: ???
+    config_name: main
+    env_set: {}
+    env_copy: []
+    config:
+      override_dirname:
+        kv_sep: '='
+        item_sep: ','
+        exclude_keys: []
+  runtime:
+    version: 1.3.2
+    version_base: '1.3'
+    cwd: /workspace/olp_h_re10k_slot0/NoPoSplat
+    config_sources:
+    - path: hydra.conf
+      schema: pkg
+      provider: hydra
+    - path: /workspace/olp_h_re10k_slot0/NoPoSplat/config
+      schema: file
+      provider: main
+    - path: ''
+      schema: structured
+      provider: schema
+    output_dir: /home/data/olp_h_re10k_slot0/noposplat_eval/re10k/olp_h_300_20260611/runs/re10k_noposplat_ft_control_metric300_s0300_n0300
+    choices:
+      experiment: re10k
+      dataset@dataset.re10k: re10k
+      dataset/view_sampler_dataset_specific_config@dataset.re10k.view_sampler: bounded_re10k
+      dataset/view_sampler@dataset.re10k.view_sampler: evaluation
+      model/decoder: splatting_cuda
+      model/encoder: noposplat
+      model/encoder/backbone: croco
+      hydra/env: default
+      hydra/callbacks: null
+      hydra/job_logging: default
+      hydra/hydra_logging: default
+      hydra/hydra_help: default
+      hydra/help: default
+      hydra/sweeper: basic
+      hydra/launcher: basic
+      hydra/output: default
+  verbose: false

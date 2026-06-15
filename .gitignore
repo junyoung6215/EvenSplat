@@ -181,3 +181,16 @@ cython_debug/
 table.tex
 /baselines
 /test/*
+
+# Curated experiment records are intentionally small and GitHub-friendly.
+!experiment_records/
+!experiment_records/**
+!experiment_records/**/*.log
+experiment_records/**/*.ckpt
+experiment_records/**/*.torch
+experiment_records/**/*.pt
+experiment_records/**/*.pth
+experiment_records/**/*.npy
+experiment_records/**/*.npz
+experiment_records/**/*.mp4
+experiment_records/**/*.gif

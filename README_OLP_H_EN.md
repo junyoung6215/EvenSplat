@@ -8,6 +8,7 @@ Main references:
 
 - Korean difference report: `docs/OLP_H_DIFF_REPORT_KO.md`
 - English difference report: `docs/OLP_H_DIFF_REPORT_EN.md`
+- GitHub experiment archive guide: `docs/GITHUB_EXPERIMENT_ARCHIVE_KO.md`
 - CUDA 11.8 environment lock: `env/requirements-cuda118.lock`
 - CUDA 11.8 environment recipe: `env/environment-cuda118.yml`
 
@@ -51,6 +52,19 @@ BASELINE_CKPT=/path/to/re10k_ft_control.ckpt \
 OLP_CKPT=/path/to/re10k_olp_ft.ckpt \
 scripts/run_re10k_collect_stats.sh
 ```
+
+To collect only GitHub-friendly analysis artifacts from `outputs/olp_re10k`:
+
+```bash
+python scripts/archive_re10k_experiment_artifacts.py \
+  --name re10k_olp_h_main_2026 \
+  --include-images \
+  --max-images 12
+```
+
+The archive script copies small metric, config, command, fingerprint, and log
+files into `experiment_records/`. Smoke/sanity outputs, checkpoints, and
+datasets remain excluded by default.
 
 ## OLP-H Core Settings
 

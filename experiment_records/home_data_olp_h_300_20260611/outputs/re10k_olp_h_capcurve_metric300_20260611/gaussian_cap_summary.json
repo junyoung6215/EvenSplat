@@ -1,0 +1,42 @@
+{
+  "0.1000": {
+    "kept_fraction_mean": 0.09999847412109375,
+    "kept_gaussians_mean": 13107.0,
+    "lpips_ours_mean": 0.658921694457531,
+    "n": 300.0,
+    "psnr_ours_mean": 6.324072389602661,
+    "ssim_ours_mean": 0.07540160490161119
+  },
+  "0.2500": {
+    "kept_fraction_mean": 0.25,
+    "kept_gaussians_mean": 32768.0,
+    "lpips_ours_mean": 0.575940231581529,
+    "n": 300.0,
+    "psnr_ours_mean": 8.10562486410141,
+    "ssim_ours_mean": 0.20084911576627443
+  },
+  "0.5000": {
+    "kept_fraction_mean": 0.5,
+    "kept_gaussians_mean": 65536.0,
+    "lpips_ours_mean": 0.4292620551586151,
+    "n": 300.0,
+    "psnr_ours_mean": 12.02819759686788,
+    "ssim_ours_mean": 0.43919329774876437
+  },
+  "0.7500": {
+    "kept_fraction_mean": 0.75,
+    "kept_gaussians_mean": 98304.0,
+    "lpips_ours_mean": 0.2784386266271273,
+    "n": 300.0,
+    "psnr_ours_mean": 18.03467991511027,
+    "ssim_ours_mean": 0.6478711615006129
+  },
+  "1.0000": {
+    "kept_fraction_mean": 1.0,
+    "kept_gaussians_mean": 131072.0,
+    "lpips_ours_mean": 0.20458816915750502,
+    "n": 300.0,
+    "psnr_ours_mean": 22.55669049580892,
+    "ssim_ours_mean": 0.7314506807923317
+  }
+}
