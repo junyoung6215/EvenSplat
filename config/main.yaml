@@ -25,6 +25,33 @@ model:
       confidence: 0.5
       blur: 0.1
 
+  # Optional pre-render Gaussian selection. With enabled=false, this path is
+  # not entered and the original NoPoSplat tensors are passed through exactly.
+  gaussian_retention:
+    enabled: false
+    apply_during_train: true
+    apply_during_eval: true
+    # opacity | base_opacity | reliability | random | external
+    score_source: opacity
+    external_score_key: retention_score
+    random_seed: 0
+    # fixed_ratio | fixed_count | elastic
+    mode: fixed_ratio
+    keep_ratio: 0.5
+    keep_count: null
+    threshold: 0.5
+    max_gaussians: null
+    start_step: 0
+    log_diagnostics: true
+    diagnostics_every_n_steps: 100
+    local_cells:
+      enabled: false
+      cell_size: 16
+      demand_key: cell_demand
+      demand_floor: 0.0
+      # 0: pure global competition, 1: reserve the best Gaussian per cell.
+      min_per_cell: 0
+
 #dataset:
 #  overfit_to_scene: null
 

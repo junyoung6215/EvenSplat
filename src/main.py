@@ -162,6 +162,7 @@ def train(cfg_dict: DictConfig):
         step_tracker,
         distiller=distiller,
         anchor_selection_cfg=cfg.model.anchor_selection,
+        gaussian_retention_cfg=cfg.model.gaussian_retention,
         debug_cfg=cfg.debug,
     )
     data_module = DataModule(
