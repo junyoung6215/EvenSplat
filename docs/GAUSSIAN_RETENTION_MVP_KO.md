@@ -1,6 +1,6 @@
 # NoPoSplat Reliability 기반 Adaptive Gaussian Retention MVP
 
-작성 기준일: 2026-09-17
+작성 기준일: 2026-09-27
 
 이 문서는 NoPoSplat에 추가한 Gaussian Reliability 기반 hard retention과
 local-cell allocation의 현재 구현 상태, 연구 의도, 설정 방법, 검증 범위를 한곳에
@@ -109,7 +109,52 @@ Reliability는 기존 soft opacity gate와 optional Reliability auxiliary loss�
 
 `start_step`을 사용하면 초기 warm-up 이후 hard retention을 시작할 수 있다.
 
-### 2.4 Local-cell allocator
+### 2.4 Reliability auxiliary loss 안전장치
+
+Reliability auxiliary loss와 soft opacity gate는 gradient 경로를 분리해 제어한다.
+Reliability head가 출력한 원본 tensor를 `r_g`라고 하면 rendering에는 다음 gate를
+사용한다.
+
+```text
+detach_gate = false: r_render = r_g
+detach_gate = true:  r_render = stop_gradient(r_g)
+alpha'_g = alpha_g * r_render
+```
+
+`detach_gate=true`는 reconstruction loss가 opacity gate를 통해 Reliability head를
+학습시키는 경로만 차단한다. Auxiliary loss와 retention ranking에는 detach되지 않은
+원본 `r_g`를 사용하므로 Reliability head는 auxiliary supervision으로 계속 학습할 수
+있다. 이전처럼 원본 tensor 자체를 detach하면 soft gate와 auxiliary loss의 gradient가
+모두 끊기므로 두 목적을 분리할 수 없다.
+
+다만 현재 MVP auxiliary loss는 다음처럼 비음수 위험 신호에 대한 단방향 페널티다.
+
+```text
+L_float = mean_g[r_g * stopgrad(opacity_g) * stopgrad(residual_risk_g)]
+dL_float / dr_g >= 0
+```
+
+따라서 `detach_gate=true`로 reconstruction의 반대 gradient까지 제거하면 auxiliary
+loss만의 최적점은 유효 Gaussian도 `r_min` 방향으로 보내는 퇴화해가 될 수 있다.
+`detach_gate=false`를 기본 학습 설정으로 유지하면 reconstruction loss가 품질 보존에
+필요한 Reliability를 높이는 반대 압력을 제공해 위험 억제와 재구성 품질 사이의
+trade-off가 생긴다. 현재의 `detach_gate=true`는 gradient 경로를 분리해 확인하는
+진단용 ablation으로만 사용하고, 실제 학습에 사용할 때는 budget/anchor 또는 양방향
+target 같은 balancing objective를 먼저 추가해야 한다. 이 조합을 사용하면 모델 초기화
+시에도 해당 위험을 경고한다.
+
+Reliability loss가 `enabled=true`이고 weight가 0이 아닌데 encoder의
+`gaussian_reliability.enabled=false`이면 모델 초기화 시 즉시 실패한다. 이 조합을
+허용하면 상수 1인 Reliability에 loss를 계산하게 되어 loss 값은 기록되지만 학습 가능한
+Reliability head가 없는 잘못된 실험이 될 수 있기 때문이다.
+
+Auxiliary loss warm-up 계수가 0인 step에서는 loss가 metadata 없이 정확히 0을 반환한다.
+`ModelWrapper`도 이 구간에는 Reliability용 visualization dump, full-Gaussian context
+rendering, residual sampling을 실행하지 않는다. Warm-up이 실제로 양수가 되는 step부터
+해당 경로를 활성화한다. 이는 loss의 수학적 값은 유지하면서 불필요한 초기 연산과
+메모리 사용을 제거한다.
+
+### 2.5 Local-cell allocator
 
 구현 파일:
 
@@ -151,7 +196,7 @@ optional `min_per_cell=1`을 지원한다. 현재는 ablation을 위해 0 또는
 즉 allocator 구조는 구현되었지만, foundation-grounded demand의 성능은 아직
 검증되지 않았다.
 
-### 2.5 Retention diagnostics
+### 2.6 Retention diagnostics
 
 다음 값을 학습 또는 평가 log로 기록한다.
 
@@ -217,6 +262,15 @@ Retention과 local allocator는 자체 trainable parameter가 없고 checkpoint 
 - budget 방식: `mode`
 - local allocation: `local_cells.enabled`
 - cell 최소 유지: `local_cells.min_per_cell`
+
+Reliability 관련 추가 의미:
+
+- `gaussian_reliability.detach_gate=false`: reconstruction과 auxiliary loss가 모두
+  Reliability head를 학습할 수 있으며 현재 MVP의 권장 기본값이다.
+- `gaussian_reliability.detach_gate=true`: reconstruction gradient만 차단하고
+  auxiliary loss gradient는 유지하지만, 현재 단방향 loss에서는 `r_min` 수축 위험이
+  있으므로 진단용 ablation으로만 사용한다.
+- Reliability auxiliary loss의 warm-up 계수가 0이면 추가 context rendering을 생략한다.
 
 ## 4. 권장 ablation 묶음
 
@@ -287,6 +341,7 @@ A100에서 실제 profiling하기 전에는 수치를 단정하지 않는다.
 - cell 최소 유지 수가 global budget보다 큰 경우
 - fixed-count mode에서 count를 지정하지 않은 경우
 - elastic mode에 batch size 1보다 큰 입력을 넣은 경우
+- 활성화된 Reliability loss에 대응하는 encoder Reliability head가 없는 경우
 
 ## 7. 현재 검증 상태
 
@@ -295,9 +350,11 @@ A100에서 실제 profiling하기 전에는 수치를 단정하지 않는다.
 - Gaussian retention 신규 테스트 15개 통과
 - Local-cell retention 신규 테스트 9개 통과
 - 기존 OLP-H 테스트 11개 통과
-- 총 35개 테스트 통과
+- OLP evaluation recorder 테스트 3개 통과
+- Reliability loss/gate 테스트 5개 통과
+- 총 43개 테스트 통과
 - 수정 Python 파일 AST parsing 통과
-- `config/main.yaml` YAML parsing 통과
+- Hydra 설정에서 retention/local-cell dataclass 변환 통과
 - `git diff --check` 통과
 
 검증한 주요 항목:
@@ -314,12 +371,25 @@ A100에서 실제 profiling하기 전에는 수치를 단정하지 않는다.
 - optional cell 최소 유지와 global budget 결합
 - batch별 fixed-budget 선택
 - 잘못된 shape/config에 대한 fail-fast
+- Reliability loss와 encoder head 설정 불일치 fail-fast
+- `detach_gate=true`에서 opacity 경로만 detach되고 auxiliary gradient는 유지
+- warm-up 계수가 0일 때 metadata 없이 zero loss를 반환
 
-현재 로컬에는 서버용 전체 가상환경과 CUDA rasterizer가 없으므로 다음은 아직
-확인하지 않았다.
+현재 로컬 RTX 4060 Ti에서 수행한 CUDA smoke 검증:
+
+- 실제 입력 규모와 같은 131,072개 synthetic Gaussian에서 50% retention,
+  local-cell 최소 유지, gather 및 backward 통과
+- 4,096개 synthetic Gaussian을 2,048개로 retention한 뒤 실제
+  `diff_gaussian_rasterization` CUDA forward/backward 통과
+- CUDA tensor에서 `detach_gate=true`일 때 opacity gradient는 유지되고 Reliability에는
+  auxiliary gradient만 전달되는 것 확인
+- PyTorch 2.1.2+cu118, CUDA toolkit 11.8, RTX 4060 Ti compute capability 8.9에서 확인
+
+현재 로컬에는 실제 RE10K dataset과 NoPoSplat/MASt3R checkpoint가 없으므로 다음은
+아직 확인하지 않았다.
 
 - 실제 NoPo checkpoint end-to-end 실행
-- CUDA rasterizer 통합
+- 실제 encoder output에서 retention을 거쳐 CUDA rasterizer까지 연결되는 end-to-end 경로
 - A100 40GB 메모리와 속도
 - 실제 학습 안정성 및 수렴
 - 분산 학습

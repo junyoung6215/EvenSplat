@@ -21,7 +21,10 @@ from .common.gaussian_adapter import GaussianAdapter, GaussianAdapterCfg, Unifie
 from .encoder import Encoder
 from .heads.preconditioner_cfg import OrthogonalPreconditionerCfg
 from .heads.preconditioner_utils import set_preconditioner_step
-from .heads.reliability_cfg import GaussianReliabilityCfg
+from .heads.reliability_cfg import (
+    GaussianReliabilityCfg,
+    opacity_reliability_gate,
+)
 from .visualization.encoder_visualizer_epipolar_cfg import EncoderVisualizerEpipolarCfg
 
 
@@ -182,10 +185,7 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
                 f"per surface. Got {reliability.shape[-1]} channels for "
                 f"{self.cfg.num_surfaces} surfaces."
             )
-        reliability = reliability.unsqueeze(-1).to(device=device, dtype=dtype)
-        if bool(self.gaussian_reliability_cfg.detach_gate):
-            reliability = reliability.detach()
-        return reliability
+        return reliability.unsqueeze(-1).to(device=device, dtype=dtype)
 
     def map_pdf_to_opacity(
         self,
@@ -259,7 +259,11 @@ class EncoderNoPoSplat(Encoder[EncoderNoPoSplatCfg]):
         else:
             reliability = torch.stack([reliability1, reliability2], dim=1)
         base_opacities = self.map_pdf_to_opacity(densities, global_step)
-        modulated_opacities = base_opacities * reliability
+        reliability_gate = opacity_reliability_gate(
+            reliability,
+            bool(getattr(self.gaussian_reliability_cfg, "detach_gate", False)),
+        )
+        modulated_opacities = base_opacities * reliability_gate
 
         # Convert the features and depths into Gaussians.
         if self.pose_free:

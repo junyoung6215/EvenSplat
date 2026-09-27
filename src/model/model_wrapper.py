@@ -25,6 +25,7 @@ from ..geometry.projection import project
 from ..global_cfg import get_cfg
 from ..loss import Loss
 from ..loss.loss_point import Regr3D
+from ..loss.loss_reliability import validate_reliability_loss_encoder
 from ..loss.loss_ssim import ssim
 from ..misc.benchmarker import Benchmarker
 from ..misc.cam_utils import update_pose, get_pnp_pose
@@ -172,6 +173,7 @@ class ModelWrapper(LightningModule):
         self.decoder = decoder
         self.data_shim = get_data_shim(self.encoder)
         self.losses = nn.ModuleList(losses)
+        validate_reliability_loss_encoder(self.encoder, self.losses)
         if any(
             bool(getattr(module, "reliability_enabled", False))
             for module in self.encoder.modules()
@@ -206,11 +208,12 @@ class ModelWrapper(LightningModule):
             for loss_fn in self.losses
         )
 
-    def _reliability_loss_enabled(self) -> bool:
+    def _reliability_loss_active(self) -> bool:
+        global_step = int(self.global_step)
         return any(
             getattr(loss_fn, "name", None) == "reliability"
-            and bool(getattr(loss_fn, "cfg", None).enabled)
-            and float(getattr(loss_fn, "cfg", None).weight) != 0.0
+            and callable(getattr(loss_fn, "is_active", None))
+            and bool(loss_fn.is_active(global_step))
             for loss_fn in self.losses
         )
 
@@ -497,7 +500,7 @@ class ModelWrapper(LightningModule):
         gaussians,
         visualization_dump: dict | None,
     ) -> None:
-        if not self._reliability_loss_enabled():
+        if not self._reliability_loss_active():
             return
         if visualization_dump is None:
             raise RuntimeError(
@@ -782,7 +785,7 @@ class ModelWrapper(LightningModule):
         if (
             self.distiller is not None
             or self._geo_loss_enabled()
-            or self._reliability_loss_enabled()
+            or self._reliability_loss_active()
             or self._retention_requires_visualization_dump("train")
         ):
             visualization_dump = {}
