@@ -1,0 +1,18 @@
+# @package _global_
+# Same pairs, images, reconstruction loss, schedule and checkpoint as prior arm.
+defaults:
+  - retention_prior
+  - _self_
+
+wandb:
+  name: retention_control_pilot
+dataset:
+  re10k:
+    foundation_prior:
+      enabled: false
+      root: null
+      teacher_id: ''
+      teacher_settings_id: ''
+loss:
+  reliability_prior:
+    enabled: false

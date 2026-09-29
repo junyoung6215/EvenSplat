@@ -1,6 +1,12 @@
 # NoPoSplat Reliability 기반 Adaptive Gaussian Retention MVP
 
-작성 기준일: 2026-09-27
+최종 갱신: 2026-09-29 — 서버 전 prior-supervision / image-detail demand 준비
+
+이번 추가 구현은 **학습 시에만 offline teacher target으로 Reliability를 보정하고,
+추론에서는 NoPoSplat의 예측 Reliability와 가벼운 image-detail demand로 retention하는
+구조**다. 기존 V1 loss와 foundation 없는 경로는 유지한다. 실제 VGGT-Ω/DA3 실행 및
+native output → teacher target 변환기는 아직 구현·검증하지 않았다. 아래 9~12절은
+서버 할당 후 실행할 최신 작업 순서이며, 성능이 검증됐다는 뜻은 아니다.
 
 이 문서는 NoPoSplat에 추가한 Gaussian Reliability 기반 hard retention과
 local-cell allocation의 현재 구현 상태, 연구 의도, 설정 방법, 검증 범위를 한곳에
@@ -109,7 +115,7 @@ Reliability는 기존 soft opacity gate와 optional Reliability auxiliary loss�
 
 `start_step`을 사용하면 초기 warm-up 이후 hard retention을 시작할 수 있다.
 
-### 2.4 Reliability auxiliary loss 안전장치
+### 2.4 기존 Reliability auxiliary loss(V1) 안전장치
 
 Reliability auxiliary loss와 soft opacity gate는 gradient 경로를 분리해 제어한다.
 Reliability head가 출력한 원본 tensor를 `r_g`라고 하면 rendering에는 다음 gate를
@@ -127,7 +133,7 @@ alpha'_g = alpha_g * r_render
 있다. 이전처럼 원본 tensor 자체를 detach하면 soft gate와 auxiliary loss의 gradient가
 모두 끊기므로 두 목적을 분리할 수 없다.
 
-다만 현재 MVP auxiliary loss는 다음처럼 비음수 위험 신호에 대한 단방향 페널티다.
+다만 기존 V1 auxiliary loss는 다음처럼 비음수 위험 신호에 대한 단방향 페널티다.
 
 ```text
 L_float = mean_g[r_g * stopgrad(opacity_g) * stopgrad(residual_risk_g)]
@@ -190,7 +196,8 @@ optional `min_per_cell=1`을 지원한다. 현재는 ablation을 위해 0 또는
 
 중요한 현재 범위는 다음과 같다.
 
-- 구현됨: cell grouping, demand pooling, `score * demand`, global budget, optional 최소 유지
+- 구현됨: cell grouping, demand pooling, `score * demand`, global budget, optional 최소 유지,
+  ON/OFF 가능한 image-detail 휴리스틱 demand(9절)
 - 미구현: 실제 foundation output에서 좋은 `d_c`를 생성하는 방법
 
 즉 allocator 구조는 구현되었지만, foundation-grounded demand의 성능은 아직
@@ -268,9 +275,10 @@ Reliability 관련 추가 의미:
 - `gaussian_reliability.detach_gate=false`: reconstruction과 auxiliary loss가 모두
   Reliability head를 학습할 수 있으며 현재 MVP의 권장 기본값이다.
 - `gaussian_reliability.detach_gate=true`: reconstruction gradient만 차단하고
-  auxiliary loss gradient는 유지하지만, 현재 단방향 loss에서는 `r_min` 수축 위험이
+  auxiliary loss gradient는 유지하지만, 기존 V1 단방향 loss에서는 `r_min` 수축 위험이
   있으므로 진단용 ablation으로만 사용한다.
-- Reliability auxiliary loss의 warm-up 계수가 0이면 추가 context rendering을 생략한다.
+- V1 Reliability auxiliary loss의 warm-up 계수가 0이면 추가 context rendering을 생략한다.
+  새 prior loss는 활성화된 뒤에도 V1용 context rendering을 요구하지 않는다.
 
 ## 4. 권장 ablation 묶음
 
@@ -343,7 +351,41 @@ A100에서 실제 profiling하기 전에는 수치를 단정하지 않는다.
 - elastic mode에 batch size 1보다 큰 입력을 넣은 경우
 - 활성화된 Reliability loss에 대응하는 encoder Reliability head가 없는 경우
 
-## 7. 현재 검증 상태
+## 7. 검증 상태와 검증 환경 구분
+
+### 이번 변경 검증 (2026-09-29)
+
+환경은 Python 3.12 / PyTorch 2.4.1+cpu다. 환경 설치·변경이나 GPU 실행은 하지 않았다.
+
+- `test_prior_retention.py`: 27개 통과. cache key/FP16 round-trip/누락·오정렬 거부,
+  mock 오사용 방지, teacher detach, 양방향 gradient, unknown/zero-weight 처리,
+  surface broadcast, warm-up, dense supervision 연결, image demand와 global budget 확인.
+- `test_fixed_pair_pipeline.py`: 10개 통과. 실제 sampler 및 dataset 제어 흐름을 격리하여
+  frame 범위, scene filtering, worker sharding, epoch 반복, 누락·중복 거부 확인.
+- standalone 테스트: hard retention 15개, local-cell 10개(기존 9 + 신규 1), OLP 11개 통과.
+  신규 통합 gradient 테스트에서는 실제 gather 이후 selected geometry만 gradient를 받고,
+  제거된 후보의 gate는 dense prior loss로 보정되는 것을 확인했다. 합계 73개 통과.
+- 새 loss/wrapper/sampler/dataset 일부는 실제 소스 정의를 AST로 로드한 CPU harness다.
+  dependency import만 우회하며, dataset 이미지 decode/crop은 테스트용 입력으로 대체한다.
+  **전체 애플리케이션 integration test 통과를 의미하지 않는다.**
+- 기존 `test_reliability_loss.py`는 `jaxtyping` 미설치로 실행 불가. Hydra/OmegaConf,
+  Lightning, einops 등도 없어 실제 config compose/typed load와 checkpoint end-to-end는
+  서버에서 검증해야 한다. 새 YAML은 정적 검사만 가능하다.
+- 새 코드에는 학습 파라미터가 추가되지 않는다. 따라서 기존 state_dict key를 늘리지
+  않지만, 실제 checkpoint load 및 OFF/100% 이미지 parity 검증은 서버에서 해야 한다.
+
+```bash
+python -B -m unittest discover -s tests -p test_prior_retention.py -v
+python -B -m unittest discover -s tests -p test_fixed_pair_pipeline.py -v
+python -B tests/test_gaussian_retention.py
+python -B tests/test_local_cell_retention.py
+python -B tests/test_olp_preconditioner.py
+```
+
+### 이전 검증 기록 (2026-09-27 문서에서 보존)
+
+아래 43개 및 RTX 4060 Ti 기록은 이전 작업의 기록이며, 이번 CPU 환경에서 재현한
+결과로 인용하면 안 된다.
 
 로컬에서 가능한 CPU 단위 검증 결과:
 
@@ -375,7 +417,7 @@ A100에서 실제 profiling하기 전에는 수치를 단정하지 않는다.
 - `detach_gate=true`에서 opacity 경로만 detach되고 auxiliary gradient는 유지
 - warm-up 계수가 0일 때 metadata 없이 zero loss를 반환
 
-현재 로컬 RTX 4060 Ti에서 수행한 CUDA smoke 검증:
+이전 로컬 RTX 4060 Ti에서 수행했다고 기록된 CUDA smoke 검증:
 
 - 실제 입력 규모와 같은 131,072개 synthetic Gaussian에서 50% retention,
   local-cell 최소 유지, gather 및 backward 통과
@@ -400,8 +442,8 @@ A100에서 실제 profiling하기 전에는 수치를 단정하지 않는다.
 현재 구현에 포함되지 않는 항목:
 
 - VGGT-Omega/DA3 checkpoint 실행
-- foundation depth/confidence cache schema
-- pair cache key, preprocessing metadata, dataloader cache loader
+- VGGT-Ω/DA3 native depth/confidence/pose → source-aligned teacher target adapter
+- 실제 teacher confidence calibration 및 support/conflict/unknown 정책 검증
 - 실제 foundation-grounded cell demand
 - 학습 가능한 demand predictor
 - retention 전후 tail 전용 비교 log
@@ -409,9 +451,9 @@ A100에서 실제 profiling하기 전에는 수치를 단정하지 않는다.
 - child Gaussian residual head
 - 별도의 post-optimization stage
 
-`ModelWrapper`에는 외부 tensor를 받을 수 있는 일반적인 연결 지점만 있다. 이것은
-foundation cache schema가 구현되었다는 뜻이 아니다. 실제 VGGT-Omega/DA3 output과
-preprocessing을 한 sample에서 확인한 후 cache 계약을 정해야 한다.
+pair cache key·NoPo-facing supervision 계약·loader는 이번에 구현했다. 이것과
+VGGT native output 스키마는 다르다. 실제 출력을 한 sample에서 확인하고 좌표를
+정렬한 후 변환기를 구현해야 한다. mock 데이터로 geometry 효과를 주장하면 안 된다.
 
 Bounded expansion은 MVP에 포함하지 않는다. 먼저 retention-only 실험에서 다음 세
 조건이 반복적으로 확인될 때만 추가 여부를 판단한다.
@@ -420,23 +462,303 @@ Bounded expansion은 MVP에 포함하지 않는다. 먼저 retention-only 실험
 2. 그 cell의 reconstruction residual이 여전히 높다.
 3. 전체 budget을 늘렸을 때 해당 영역의 품질이 실제로 개선된다.
 
-## 9. 서버 할당 후 검증 순서
+## 9. 이번 추가 구현: 역할과 독립적인 ON/OFF
 
-1. Retention OFF로 기존 checkpoint 결과와 parity 확인
-2. Retention ON, `keep_ratio=1.0` parity 확인
-3. 50% fixed budget에서 정확한 Gaussian 수와 renderer 실행 확인
-4. Evaluation-only random/opacity/reliability top-k 비교
-5. 25%, 50%, 75% budget Pareto curve 작성
-6. 가장 유망한 score로 짧은 pruning-aware fine-tuning
-7. view/cell empty ratio와 품질 저하 위치 확인
-8. 단순 dummy 또는 image/depth-gradient demand로 local allocator sanity check
-9. VGGT-Omega/DA3 한 sample의 실제 output/preprocessing 확인
-10. 확인된 output을 기준으로 cache schema와 foundation experiment 설계
+| 모듈 | 코드 | 목적 / 기대효과 | OFF 방법 |
+| --- | --- | --- | --- |
+| Fixed pair sampler | `src/foundation/pairs.py`, `src/dataset/view_sampler/view_sampler_fixed_pairs.py` | 같은 학습 pair를 반복하여 cache를 재사용하고 비교군의 데이터 차이를 제거 | 기존 `+experiment=re10k`의 bounded sampler 사용 |
+| Prior cache loader | `src/foundation/prior.py`, `src/dataset/dataset_re10k.py` | source image와 정렬된 target·mask·weight를 CPU에서 읽기 | `dataset.re10k.foundation_prior.enabled=false` |
+| 양방향 prior auxiliary loss | `src/foundation/supervision.py`, `src/loss/loss_reliability_prior.py` | support는 신뢰도를 올리고 conflict는 낮추며 unknown은 제외 | `loss.reliability_prior.enabled=false` 또는 loss 목록에서 제거 |
+| Image-detail demand | `src/model/image_demand.py`, `ModelWrapper._apply_local_cell_allocation` | 이미지 경계·detail 영역의 기존 후보를 더 남기는 휴리스틱 | `model.gaussian_retention.local_cells.enabled=false` |
+| 설정 사전 검사 | `src/foundation/validation.py`, `src/main.py` | loss만 켜고 cache를 빼는 등의 오류를 warm-up 전에 검출 | prior loss가 OFF이면 개입하지 않음 |
+| Input export / cache 검사 | `scripts/prepare_prior_inputs.py`, `scripts/check_prior_cache.py` | teacher 입력과 NoPo crop의 동일성·cache coverage 검증 | 명시적으로 실행할 때만 동작 |
 
-각 단계의 stop/go 기준:
+기존 `src/loss/loss_reliability.py`는 수정하지 않았다. V1과 prior loss는 별개이며
+MVP에서는 둘을 동시에 켜지 못하게 했다. 새 optimizer parameter / decoder / backbone은
+없다. OLP 설정·seed·mix·r_min은 복원할 checkpoint의 설정과 반드시 일치시킨다.
+새 preset의 OLP mix=1, seed=0은 **기본 가정**이며 checkpoint 설정을 확인해 바꿔야 한다.
 
-- OFF 또는 100% parity가 깨지면 다음 실험으로 진행하지 않는다.
-- Random과 차이가 없으면 Reliability ranking 및 loss부터 재검토한다.
-- 빈 cell 증가가 품질 저하와 연결되면 `min_per_cell=1`을 ablation한다.
-- Fine-tuning으로 품질이 회복되지 않으면 expansion보다 score/demand 설계를 먼저
-  재검토한다.
+### Prior loss가 하는 일
+
+```text
+학습 입력 pair ──offline teacher──> target t / valid m / weight w (cache)
+       │
+       └──NoPo encoder──> r [B,V,H,W,S,1]
+                            │
+                    prior loss (전체 후보)
+                            │
+             soft opacity gate → hard selection → render → MSE + LPIPS
+
+추론: NoPo → r × image-detail cell demand → top-k → render
+      teacher 실행 / cache 조회 / 장면별 Gaussian post-opt 없음
+```
+
+정의는 `r_hat=(r-r_min)/(1-r_min)`,
+`L_prior=sum(m*w*(r_hat-t)^2)/max(sum(m*w),eps)`다.
+pixel target `[B,V,H,W]`를 surface 축에 broadcast하고 분모에도 같은 축을 반영한다.
+`L_total=L_MSE+L_LPIPS+lambda*warmup*L_prior`이며 lambda=0.001은 **검증 전 pilot 값**이다.
+
+- teacher target/weight/mask는 detach한다. Encoder Reliability는 detach하지 않는다.
+- hard top-k의 선택 index는 미분하지 않지만, prior loss는 **선택 전 전체 r**를 감독한다.
+  따라서 제거된 후보도 prior loss gradient를 받을 수 있다.
+- selected Gaussian에는 rendering loss가 흐르므로 pruning-aware fine-tuning이 가능하다.
+- prior-only 학습에서는 V1용 context render를 추가 실행하지 않는다.
+- valid가 전부 false이거나 weight가 0이면 미분 가능한 0을 반환한다. 학습이 계속돼도
+  teacher signal이 없는 것이므로 `effective_weight`, `valid_fraction`을 반드시 감시한다.
+- teacher support는 “그 pixel의 geometry evidence”이지, 예측 Gaussian의 기하학적 정확성
+  자체를 증명하지 않는다. Reliability 순위가 좋아지는지는 동일 budget 실험으로 검증한다.
+
+### Local demand가 하는 일
+
+입력은 정규화를 되돌린 RGB `[B,V,3,H,W]`. 인접 pixel RGB 차이의 평균을 구해 두 view
+전체에서 공통 scale로 정규화한다. `d_pixel=1+strength*detail/max(detail)`를 cell 평균
+pooling한 후 기존 allocator가 `q_g=r_g*d_cell`로 global competition을 수행한다.
+기본 strength=1, cell=16, min_per_cell=0. strength=0 또는 평탄한 입력은 demand=1이다.
+
+이는 **image-detail 휴리스틱**이다. 실제 geometry demand, reconstruction residual 또는
+학습된 capacity predictor라고 부르면 안 된다. Texture가 강한 불량 영역을 과대평가할 수
+있어 반드시 global Reliability-only와 비교한다. cell마다 동일 quota를 주지 않으며,
+최대 후보 수를 늘리거나 새로운 Gaussian을 생성하지 않는다.
+
+### Cache 계약 및 데이터 정렬
+
+- manifest는 `schema_version=1`, `split=train`, scene당 **하나의 ordered context pair**와
+  고정 개수 target을 담는다. context와 target은 겹치지 않는다. 다중 pair/scene은 미지원.
+- 실제 `train/index.json`에 없는 scene, frame 범위 초과, 잘못된 shape/FOV/baseline은
+  조용히 건너뛰지 않고 오류를 낸다. worker별 chunk를 먼저 나누고 shuffle하여 중복을
+  막으며 persistent worker가 다음 epoch에서도 같은 chunk 집합을 맡는다. 단일 GPU 전용.
+- augmentation=false를 prior arm뿐 아니라 **모든 matched control arm**에 적용한다.
+  현재 flip된 prior map 정렬은 구현하지 않았기 때문에 augmentation=true는 거부한다.
+- dataset의 기존 `apply_crop_shim` 이후, encoder normalize 이전 RGB를 기준으로 한다.
+  360×640 원본은 기존 resize/center-crop을 거쳐 256×256이 된다.
+- key는 scene, **순서를 보존한 context indices**, H/W, teacher checkpoint revision,
+  teacher settings ID, preprocessing ID, schema version의 SHA256이다. RGB uint8 hash도
+  payload에서 대조한다. target frame은 teacher 입력이 아니므로 key에 넣지 않는다.
+- cache `.npz`: `teacher_target`, `teacher_weight`는 FP16 `[2,H,W]`, `teacher_valid`는
+  bool `[2,H,W]`, metadata는 JSON 문자열. 로드 후 float map은 FP32로 변환된다.
+- target와 weight는 유한한 `[0,1]`이어야 한다. VGGT raw confidence를 그대로 넣지 않는다.
+- loader는 **train에서만** 활성화된다. val/test는 training manifest 대신 별도 evaluation
+  index를 쓰며 cache 없이 동작한다. cache가 누락되면 train은 실패한다. 일부 cache로
+  전체 랜덤 pair를 학습하는 자동 fallback은 없다: **manifest 자체가 cached subset**이다.
+- mock은 좌/우 0/1 label과 첫 행 unknown을 만드는 배선 점검용이다. 저장 시 `kind=mock`,
+  dataset/loss 양쪽 명시적 허용이 필요하며 실제 teacher 실험에 섞지 않는다.
+
+저장량 상한 추정(압축·metadata 제외, 256² / 2 view): maps는 pair당 0.625 MiB,
+10,000 pair 약 6.1 GiB, 100,000 pair 약 61 GiB. Exported RGB는 pair당 0.375 MiB를
+추가 사용한다. 압축률·파일시스템 overhead·teacher native depth/pose 보관량은 별도다.
+학습 batch의 세 map 자체는 FP32/Bool 기준 pair당 약 1.125 MiB이며, loss 연산 중간값과
+prefetch는 별도다. Frozen teacher가 NoPo GPU 메모리를 점유하지 않는 것이 주된 이점이다.
+
+## 10. 서버에서 실행할 순서와 명령
+
+이 절은 Linux 서버 Bash 예시다. 경로는 실제 할당 경로로 바꾸고, 기존 checkpoint의
+OLP/reliability 설정을 먼저 확인한다. 아래 config는 `src.main`용 Hydra experiment다.
+기존 `scripts/run_re10k.py`의 `experiment_runs` preset 형식과 다르므로 그 runner에
+그대로 넣지 않는다. 이 작업에서는 기존 runner의 명령 생성 로직을 바꾸지 않았다.
+
+### Gate 0 — 환경·checkpoint·OFF parity
+
+1. 서버에서만 기존 NoPo 환경/CUDA rasterizer를 설치·검증한다. VGGT 환경은 별도로 둔다.
+   저장소 README의 환경을 우선하며, teacher 패키지를 NoPo 환경에 덮어 설치하지 않는다.
+2. HF의 기존 checkpoint를 받아 `pretrained_load_audit.json` 및 load log를 확인한다.
+   missing/unexpected Reliability head key가 있으면 기존 head가 복원된 것으로 간주하지 않는다.
+3. 7절 CPU 테스트 + 기존 `test_reliability_loss.py`를 정식 의존성 환경에서 모두 재실행한다.
+4. 기존 evaluation pair 8~32개에서 retention OFF vs ON/100% output parity를 확인한다.
+   preset 변경으로 OLP나 camera frame이 달라진 비교는 parity가 아니다.
+5. `test.align_pose=true`는 기존 pose alignment다. 새 Gaussian post-opt가 아니다.
+   품질 비교는 모든 arm에서 동일 설정, 속도 비교는 alignment OFF를 별도로 측정한다.
+
+### Gate 1 — 작은 fixed pair와 mock end-to-end
+
+먼저 train split에서 8~32 scene만 선택한다. 실제 frame 번호를 확인한 뒤 아래 형식으로
+`train_pairs_pilot.json`을 만든다. 이 예시 scene/번호는 실행 가능한 데이터가 아니다.
+overlap을 알면 기록하고, 기본 0.5는 placeholder이므로 실제 overlap별 성능 분석에 쓰지 않는다.
+
+```json
+{"schema_version":1,"split":"train","pairs":[
+  {"scene":"ACTUAL_TRAIN_SCENE","context":[10,70],"target":[25,40,55,60],"overlap":0.5}
+]}
+```
+
+```bash
+DATA=/server/data/re10k
+CKPT=/server/checkpoints/existing_olp_reliability.ckpt
+PAIRS=/server/manifests/train_pairs_pilot.json
+
+# 먼저 config만 확인. --cfg는 Hydra compose 확인이며 typed config 실행 검증은 아님.
+python -m src.main +experiment=retention_mock \
+  model.encoder.pretrained_weights="$CKPT" \
+  dataset.re10k.roots="[$DATA]" \
+  dataset.re10k.view_sampler.index_path="$PAIRS" --cfg job
+
+# 실제 4-step mock smoke. 연구 결과에 포함 금지.
+python -m src.main +experiment=retention_mock \
+  model.encoder.pretrained_weights="$CKPT" \
+  dataset.re10k.roots="[$DATA]" \
+  dataset.re10k.view_sampler.index_path="$PAIRS" \
+  hydra.run.dir=outputs/DIAGNOSTIC_prior_mock
+```
+
+모든 새 preset은 batch=1, worker=0에서 시작한다. GPU 실행 전 실제 composed config와
+typed load가 정상인지 확인한다. mock loss finite / head gradient nonzero / mock_fraction=1,
+retention ON 추가 실행 시 정확한 50% count와 backward를 확인한다. 이후 worker=2에서
+pair coverage를 다시 확인한다. mock checkpoint는 main 실험 초기화에 사용하지 않는다.
+
+### Gate 2 — 실제 teacher adapter 검증 후 작은 cache만 생성
+
+```bash
+python -m scripts.prepare_prior_inputs \
+  --data-root "$DATA" --pairs "$PAIRS" --output /server/prior_inputs/pilot \
+  --teacher-id vggt-omega-EXACT_REVISION --teacher-settings-id repro416-policy-v1
+
+# 아래 명령은 실제 teacher가 아니라 file-cache 배선 점검용이다.
+python -m scripts.check_prior_cache --inputs /server/prior_inputs/pilot \
+  --cache /server/prior_cache/DIAGNOSTIC --make-mock
+python -m scripts.check_prior_cache --inputs /server/prior_inputs/pilot \
+  --cache /server/prior_cache/DIAGNOSTIC --allow-mock
+```
+
+서버에서 **추가 구현해야 하는 부분**은 teacher adapter다:
+
+1. VGGT-Ω checkpoint 접근 및 2-view/416 한 pair의 실제 depth/confidence/pose tensor와
+   preprocessing을 확인한다. 실행·메모리·전처리 시간을 측정한다. 접근/환경 문제가 계속되면
+   DA3로 바꾸되 동일한 NoPo-facing 계약을 사용하고 새 teacher/settings ID를 부여한다.
+2. Exported RGB source grid를 teacher에 넣고 resize/pad 좌표변환을 기록한다. 416 map을
+   단순 reshape하지 말고 inverse resize/pad로 256 source grid에 되돌린다. valid mask는
+   nearest/보수적 유효성 처리, depth/confidence는 의미에 맞는 보간을 검증한다.
+3. Teacher 내부 depth/pose로 cross-view reprojection support/conflict를 계산한다.
+   NoPo center/coordinate/canonical/GT target pose를 이 teacher pose로 대체하지 않는다.
+4. 관측 범위 밖, occluded, low-confidence, invalid depth는 우선 unknown으로 제외한다.
+   충분히 관측된 high-confidence mismatch만 conflict로 만든다. confidence 낮음만으로
+   target=0을 주지 않는다. confidence calibration과 depth-relative threshold를 train pilot에서
+   정하고 settings ID에 버전 고정한다. test quality로 threshold를 튜닝하지 않는다.
+5. source RGB 위 target/valid/weight를 overlay하여 최소 8 pair를 직접 검토한다.
+   이후 `write_prior_cache(..., kind="teacher")`로 저장하고 아래 검사로 100% coverage 확인.
+
+```bash
+python -m scripts.check_prior_cache --inputs /server/prior_inputs/pilot \
+  --cache /server/prior_cache/real_pilot
+```
+
+여기에는 `--allow-mock`를 넣지 않는다. 실제 adapter의 confidence를 확인하기 전에는
+공식 teacher output과 스키마가 이미 호환된다고 주장하지 않는다. 8~32 pair 확인 후
+128~512 pair 비용 pilot, 그 다음에만 1k~10k pair subset으로 확장한다. 전체 RE10K cache는
+만들지 않는다. subset 규모는 측정한 pair/sec·디스크·학습 다양성으로 결정한다.
+
+### Gate 3 — loss 비교부터, local demand와 pruning 학습은 나중에
+
+아래는 실제 cache 완성 후의 명령이다. 각 arm은 **같은 기존 checkpoint에서 별도로**
+초기화한다. `checkpointing.load=null`로 optimizer/global_step을 새로 시작한다.
+`model.encoder.pretrained_weights`가 weights 초기화, `checkpointing.load`는 Lightning
+resume라는 차이를 유의한다. resume하면 warm-up/max_steps도 기존 step 기준이 된다.
+
+```bash
+# A: matched control — reconstruction loss만, 같은 fixed pair/augmentation OFF
+python -m src.main +experiment=retention_control \
+  model.encoder.pretrained_weights="$CKPT" dataset.re10k.roots="[$DATA]" \
+  dataset.re10k.view_sampler.index_path="$PAIRS" \
+  hydra.run.dir=outputs/pilot_control
+
+# B: legacy V1 — 식은 그대로, pilot warm-up은 prior arm과 맞춤
+python -m src.main +experiment=retention_control 'loss=[mse,lpips,reliability]' \
+  loss.reliability.enabled=true loss.reliability.warmup_start=500 \
+  loss.reliability.warmup_end=1500 \
+  model.encoder.pretrained_weights="$CKPT" dataset.re10k.roots="[$DATA]" \
+  dataset.re10k.view_sampler.index_path="$PAIRS" \
+  hydra.run.dir=outputs/pilot_legacy
+
+# C: foundation prior — local allocation OFF, hard retention OFF
+python -m src.main +experiment=retention_prior \
+  model.encoder.pretrained_weights="$CKPT" dataset.re10k.roots="[$DATA]" \
+  dataset.re10k.view_sampler.index_path="$PAIRS" \
+  dataset.re10k.foundation_prior.root=/server/prior_cache/real_pilot \
+  dataset.re10k.foundation_prior.teacher_id=vggt-omega-EXACT_REVISION \
+  dataset.re10k.foundation_prior.teacher_settings_id=repro416-policy-v1 \
+  hydra.run.dir=outputs/pilot_prior
+```
+
+각 run의 resolved config, checkpoint SHA/이름, pair manifest hash, seed, 실제 optimizer
+update 수, teacher ID/settings를 보관한다. 기존 historical 결과는 삭제하지 않고 참고선으로
+남긴다. 데이터/schedule이 다른 historical V1과 C를 직접 비교하여 loss 효과라고 결론내리지 않는다.
+loss weight sweep은 pilot에서 0 / 1e-4 / 1e-3 정도로 제한하며 성능·gradient 크기를 보고 확정한다.
+
+### Gate 4 — 동일 budget 평가 → demand → pruning-aware fine-tuning
+
+```bash
+EVAL_CKPT=/server/checkpoints/CHOSEN_PILOT.ckpt
+EVAL_INDEX=/server/manifests/held_out_eval.json
+python -m src.main +experiment=re10k mode=test 'loss=[mse,lpips]' \
+  dataset/view_sampler@dataset.re10k.view_sampler=evaluation \
+  dataset.re10k.view_sampler.index_path="$EVAL_INDEX" dataset.re10k.roots="[$DATA]" \
+  checkpointing.load="$EVAL_CKPT" model.encoder.pretrained_weights=null \
+  model.encoder.orthogonal_preconditioner.enabled=true \
+  model.encoder.orthogonal_preconditioner.mix=1.0 \
+  model.encoder.orthogonal_preconditioner.target_mix=1.0 \
+  model.encoder.orthogonal_preconditioner.warmup_steps=0 \
+  model.encoder.gaussian_reliability.enabled=true \
+  model.gaussian_retention.enabled=true model.gaussian_retention.keep_ratio=0.5 \
+  model.gaussian_retention.score_source=reliability \
+  test.output_path=outputs/eval_r50 hydra.run.dir=outputs/eval_r50_run
+```
+
+- 먼저 같은 checkpoint에서 `score_source=random/base_opacity/opacity/reliability`만 바꾼다.
+  50%에서 유망하면 25/50/75%를 평가한다. 모든 출력 경로는 다르게 지정한다.
+- 동일 checkpoint/ratio에서 다음 세 override를 추가하여 demand 효과만 비교한다:
+  `model.gaussian_retention.local_cells.enabled=true`,
+  `model.gaussian_retention.local_cells.demand_source=image_detail`,
+  `model.gaussian_retention.local_cells.detail_strength=1.0`.
+  cell=16, min_per_cell=0으로 시작하고 빈 cell 문제가 관측될 때만 min_per_cell=1.
+- 유망한 arm에만 50% pruning-aware fine-tuning. 해당 pilot checkpoint를
+  `model.encoder.pretrained_weights`로 넣고 optimizer를 reset한다. 학습 명령에
+  `model.gaussian_retention.enabled=true`, `keep_ratio=0.5`, `score_source=reliability`를
+  추가한다. demand는 ON/OFF 비교한 설정 그대로 유지하고 eval에서도 같은 설정을 사용한다.
+- Fine-tuning 효과만 보려면 동일 pilot checkpoint에서 **동일 추가 step의 full-count
+  continuation**도 수행한다. 전후 비교만 하면 추가 학습 시간 효과와 pruning 효과가 섞인다.
+- Elastic은 마지막 선택 실험이다. batch=1, mode=elastic, threshold, max_gaussians를
+  고정해 실제 count/quality를 보고한다. fixed-budget Pareto와 혼합하지 않는다.
+
+### 측정 주의
+
+PSNR/SSIM/LPIPS, 실제 count, view/cell retention, empty-cell 비율, opacity·scale·covariance
+tail을 함께 기록한다. floater proxy가 실제 geometry correctness를 증명하지는 않는다.
+현재 `Benchmarker.time`은 CPU wall clock이며 CUDA 동기화가 없고 memory는 전체 peak다.
+따라서 그 숫자만으로 rasterizer 가속을 주장하지 않는다. 서버에서 별도 synchronized
+CUDA event / warm-up / 반복 측정 / 단계별 reset_peak_memory_stats 기반 protocol을 검증한 뒤
+encoder, selection, decoder, total을 분리 기록한다. 공정한 속도 run은 이미지 저장·진단 log와
+pose alignment OFF. 품질 평가의 pose alignment ON 결과는 별도 표로 구분한다.
+
+## 11. 6주 일정, 필수 ablation, stop/go
+
+| 주 | 실행 | 다음 단계 진입 조건 / 중단 조건 |
+| --- | --- | --- |
+| 1 | 환경·checkpoint 복원, config/typed load, OFF/100% parity, 4-step mock, baseline 50% | parity/count/backward 실패 시 다른 연구 기능 실험 중단하고 배선부터 해결 |
+| 2 | 실제 teacher 8~32 pair adapter, 128~512 pair 비용/정렬 pilot | unknown 처리·overlay·coverage·저장비용이 검증될 때만 subset cache 확장 |
+| 3 | matched reconstruction-only / V1 / prior pilot, local OFF | full-count 품질 심각한 하락, r collapse, valid signal 부재면 weight/labels 점검; 1회 수정 후에도 개선 없으면 prior는 보류 |
+| 4 | 선택 checkpoint의 25/50/75% Pareto, image-detail demand ON/OFF | 동일 budget에서 개선 없으면 local OFF를 최종모델로 채택 가능 |
+| 5 | 유망 arm pruning-aware FT + 같은 step full-count continuation | 회복 여부 및 비용 비교; expansion으로 범위 확대하지 않음 |
+| 6 | seed 반복/held-out 최종평가, synchronized 성능측정, 사례·표·논문 정리 | test로 설정 재튜닝 금지, 검증된 결과만 contribution으로 주장 |
+
+필수: 원 checkpoint 기준선, matched A/B/C loss 비교(teacher 성공 시), 동일 count의
+random/base-opacity/reliability 비교, local ON/OFF, pruning-aware FT 전후와 continuation.
+`opacity=alpha*r`도 기록하면 soft suppression과 ranking 효과를 구분하기 쉽다.
+필요 이상으로 모든 조합을 학습하지 않는다. score/budget/demand의 첫 비교는 **재학습 없는
+같은 checkpoint 평가**로 끝낸다. 최종 유망 설정에 한해 최소 2 seed 반복을 우선한다.
+
+선택: 8 vs 16 cell, min_per_cell=1, elastic threshold, 두 번째 teacher(DA3), 확대된 subset,
+depth-derived demand. 제외: bounded expansion, learned demand head, 전체 데이터 cache,
+online foundation backbone, anchor/canonical 변경, scene별 Gaussian post-optimization.
+
+Foundation이 막히면 `retention_control` 또는 matched V1로 진행하고,
+`foundation_prior.enabled=false`, prior loss OFF를 유지한다. **fallback에서도 hard retention,
+image-detail local allocator, pruning-aware fine-tuning은 사용 가능**하다. Teacher를 빼도
+기존 checkpoint와 결과는 보존되지만, foundation-grounded라는 논문 주장은 제거해야 한다.
+
+## 12. 면담용 요약
+
+“기존 Reliability를 실제 Gaussian 압축에 쓰는 구조에, 학습 때만 외부 geometry 근거로
+신뢰도를 보정할 수 있는 분리된 loss와 안전한 cache 입력 경로를 추가했습니다. 이미지
+detail에 따라 남길 위치를 조절하는 가벼운 demand도 구현했습니다. 각각 끄고 켤 수 있어
+loss의 효과, 선택 기준의 효과, pruning-aware fine-tuning의 효과를 따로 비교할 수 있습니다.
+현재 확인한 것은 CPU 수준의 동작과 gradient이며, geometry prior의 실제 효용과 품질·속도
+개선은 서버 실험으로 검증해야 합니다. Foundation 모델을 추론마다 추가 실행하는 설계는
+아니며, 잘 안 될 경우 기존 방식으로 돌아갈 수 있습니다.”

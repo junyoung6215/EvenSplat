@@ -1,0 +1,26 @@
+# @package _global_
+# Wiring diagnostics only. Never include this model in research comparisons.
+defaults:
+  - retention_prior
+  - _self_
+
+wandb:
+  name: DIAGNOSTIC_mock_prior
+dataset:
+  re10k:
+    foundation_prior:
+      source: mock
+      allow_mock: true
+      root: null
+      teacher_id: mock
+      teacher_settings_id: diagnostic-v1
+loss:
+  reliability_prior:
+    allow_mock: true
+    warmup_start: 0
+    warmup_end: 0
+trainer:
+  max_steps: 4
+  val_check_interval: 100
+checkpointing:
+  every_n_train_steps: 4

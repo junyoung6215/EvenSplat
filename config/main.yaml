@@ -48,6 +48,8 @@ model:
       enabled: false
       cell_size: 16
       demand_key: cell_demand
+      demand_source: external
+      detail_strength: 1.0
       demand_floor: 0.0
       # 0: pure global competition, 1: reserve the best Gaussian per cell.
       min_per_cell: 0

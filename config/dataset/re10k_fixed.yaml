@@ -1,0 +1,22 @@
+# Deliberately does not inherit bounded_re10k sampler fields.
+defaults:
+  - base_dataset
+  - view_sampler: fixed_pairs
+
+name: re10k
+roots: [datasets/re10k]
+input_image_shape: [256, 256]
+original_image_shape: [360, 640]
+cameras_are_circular: false
+baseline_min: 1e-3
+baseline_max: 1e10
+max_fov: 100.0
+augment: false
+foundation_prior:
+  enabled: false
+  source: cache
+  root: null
+  teacher_id: ''
+  teacher_settings_id: ''
+  preprocessing_id: noposplat-rescale-center-crop-rgb-v1
+  allow_mock: false

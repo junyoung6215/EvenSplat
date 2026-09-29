@@ -16,6 +16,8 @@ class LocalCellRetentionCfg:
     demand_key: str = "cell_demand"
     demand_floor: float = 0.0
     min_per_cell: int = 0
+    demand_source: str = "external"
+    detail_strength: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -208,6 +210,10 @@ class LocalCellAllocator(nn.Module):
         self._validate_cfg()
 
     def _validate_cfg(self) -> None:
+        if self.cfg.demand_source not in ("external", "image_detail"):
+            raise ValueError("local_cells.demand_source must be external or image_detail.")
+        if not torch.isfinite(torch.tensor(self.cfg.detail_strength)) or self.cfg.detail_strength < 0:
+            raise ValueError("local_cells.detail_strength must be finite and nonnegative.")
         if int(self.cfg.cell_size) <= 0:
             raise ValueError("local_cells.cell_size must be positive.")
         if not self.cfg.demand_key:

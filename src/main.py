@@ -24,6 +24,7 @@ with install_import_hook(
     from src.config import load_typed_root_config
     from src.dataset.data_module import DataModule
     from src.global_cfg import set_cfg
+    from src.foundation.validation import validate_prior_pipeline
     from src.loss import get_losses
     from src.misc.LocalLogger import LocalLogger
     from src.misc.checkpoint_audit import load_encoder_pretrained_weights
@@ -56,6 +57,7 @@ def jsonable(value):
 )
 def train(cfg_dict: DictConfig):
     cfg = load_typed_root_config(cfg_dict)
+    validate_prior_pipeline(cfg)
     set_cfg(cfg_dict)
 
     # Set up the output directory.

@@ -203,6 +203,32 @@ def test_distribution_statistics_detect_empty_cells() -> None:
     torch.testing.assert_close(stats["cell_kept_fraction_max"], torch.tensor(1.0))
 
 
+def test_pruned_candidates_still_receive_prior_gradients() -> None:
+    from src.foundation.supervision import prior_reliability_loss
+    from src.model.image_demand import image_detail_demand
+
+    reliability = torch.full((1, 2, 4, 4, 1, 1), 0.6, requires_grad=True)
+    gaussians = make_gaussians(32)
+    gaussians.opacities = reliability.reshape(1, 32)
+    gaussians.means.requires_grad_()
+    layout = GaussianGridLayout(2, 4, 4, 1, 1)
+    allocator = LocalCellAllocator(LocalCellRetentionCfg(enabled=True, cell_size=2))
+    allocation = allocator(reliability.reshape(1, 32),
+                           image_detail_demand(torch.zeros(1, 2, 3, 4, 4)), layout)
+    result = GaussianRetention(GaussianRetentionCfg(enabled=True, keep_ratio=0.5))(
+        gaussians, allocation.scores)
+    prior_loss, _ = prior_reliability_loss(reliability, torch.zeros(1, 2, 4, 4),
+        torch.ones(1, 2, 4, 4, dtype=torch.bool), torch.ones(1, 2, 4, 4), .05)
+    (result.gaussians.opacities.sum() + result.gaussians.means.sum() + prior_loss).backward()
+    mask = retention_selection_mask(allocation.scores, result.indices)
+    assert result.output_count == 16
+    # Real gather graph: geometry gradients only on selected candidates.
+    assert torch.all(gaussians.means.grad[~mask] == 0)
+    assert torch.all(gaussians.means.grad[mask] != 0)
+    # Dense auxiliary graph: discarded gates still receive a correction.
+    assert torch.all(reliability.grad.reshape(1, 32)[~mask] > 0)
+
+
 if __name__ == "__main__":
     test_cell_ids_follow_view_pixel_surface_sample_order()
     test_full_resolution_demand_is_average_pooled()
@@ -213,3 +239,4 @@ if __name__ == "__main__":
     test_elastic_selection_unions_threshold_and_minimum_coverage()
     test_minimum_cell_coverage_supports_batched_fixed_budgets()
     test_distribution_statistics_detect_empty_cells()
+    test_pruned_candidates_still_receive_prior_gradients()

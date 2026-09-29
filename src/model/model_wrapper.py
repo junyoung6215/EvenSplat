@@ -26,6 +26,8 @@ from ..global_cfg import get_cfg
 from ..loss import Loss
 from ..loss.loss_point import Regr3D
 from ..loss.loss_reliability import validate_reliability_loss_encoder
+from ..loss.loss_reliability_prior import validate_prior_loss_encoder
+from .image_demand import image_detail_demand
 from ..loss.loss_ssim import ssim
 from ..misc.benchmarker import Benchmarker
 from ..misc.cam_utils import update_pose, get_pnp_pose
@@ -174,6 +176,7 @@ class ModelWrapper(LightningModule):
         self.data_shim = get_data_shim(self.encoder)
         self.losses = nn.ModuleList(losses)
         validate_reliability_loss_encoder(self.encoder, self.losses)
+        validate_prior_loss_encoder(self.encoder, self.losses, self.anchor_selection_cfg)
         if any(
             bool(getattr(module, "reliability_enabled", False))
             for module in self.encoder.modules()
@@ -216,6 +219,22 @@ class ModelWrapper(LightningModule):
             and bool(loss_fn.is_active(global_step))
             for loss_fn in self.losses
         )
+
+    def _prior_loss_active(self) -> bool:
+        return any(loss.name == "reliability_prior" and loss.is_active(int(self.global_step))
+                   for loss in self.losses)
+
+    def _attach_reliability_prior(self, batch, visualization_dump) -> None:
+        if not self._prior_loss_active():
+            return
+        if visualization_dump is None or "reliability" not in visualization_dump:
+            raise RuntimeError("Prior loss requires dense encoder reliability gates.")
+        if self.anchor_selection_cfg.enabled:
+            raise ValueError("Prior maps require original source-view order.")
+        batch["_reliability_prior"] = {
+            "reliability": visualization_dump["reliability"],
+            "r_min": float(self.encoder.gaussian_reliability_cfg.r_min),
+        }
 
     def _retention_applies(self, stage: str) -> bool:
         if stage not in ("train", "eval"):
@@ -359,11 +378,14 @@ class ModelWrapper(LightningModule):
         cfg = self.local_cell_allocator.cfg
         if not bool(cfg.enabled):
             return scores, None, layout
-        demand = self._find_retention_tensor(
-            cfg.demand_key,
-            batch,
-            visualization_dump,
-        )
+        if cfg.demand_source == "image_detail":
+            demand = image_detail_demand(
+                self._denormalize_context_image(batch["context"]["image"]),
+                strength=cfg.detail_strength)
+        elif cfg.demand_source == "external":
+            demand = self._find_retention_tensor(cfg.demand_key, batch, visualization_dump)
+        else:
+            raise ValueError(f"Unknown local demand source: {cfg.demand_source!r}")
         if not isinstance(demand, Tensor):
             raise RuntimeError(
                 f"Local-cell retention requires Tensor {cfg.demand_key!r} in the "
@@ -786,6 +808,7 @@ class ModelWrapper(LightningModule):
             self.distiller is not None
             or self._geo_loss_enabled()
             or self._reliability_loss_active()
+            or self._prior_loss_active()
             or self._retention_requires_visualization_dump("train")
         ):
             visualization_dump = {}
@@ -796,6 +819,7 @@ class ModelWrapper(LightningModule):
         )
         self._attach_geo_intermediates(batch, visualization_dump)
         self._attach_reliability_intermediates(batch, gaussians, visualization_dump)
+        self._attach_reliability_prior(batch, visualization_dump)
         retention = self._apply_gaussian_retention(
             gaussians,
             batch,
@@ -837,9 +861,9 @@ class ModelWrapper(LightningModule):
                 if isinstance(valid_ratio, Tensor):
                     self.log("geo/valid_ratio", valid_ratio)
                 self._maybe_save_geo_debug(loss_fn, batch_idx)
-            if loss_fn.name == "reliability" and getattr(loss_fn, "last_info", None):
+            if loss_fn.name in ("reliability", "reliability_prior") and getattr(loss_fn, "last_info", None):
                 for key, value in loss_fn.last_info.items():
-                    self.log(f"reliability/{key}", value)
+                    self.log(f"{loss_fn.name}/{key}", value)
             total_loss = total_loss + loss
 
         preconditioner_stats = self.olp_eval_recorder.collect_preconditioner_stats(
@@ -1164,7 +1188,7 @@ class ModelWrapper(LightningModule):
                     # Compute and log loss.
                     total_loss = 0
                     for loss_fn in self.losses:
-                        if loss_fn.name == "geo":
+                        if loss_fn.name in ("geo", "reliability_prior"):
                             continue
                         loss = loss_fn.forward(output, batch, gaussians, self.global_step)
                         total_loss = total_loss + loss
