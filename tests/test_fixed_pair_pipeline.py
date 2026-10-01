@@ -4,6 +4,7 @@ These CPU tests exercise fixed-pair sharding and coverage without requiring
 torchvision/einops/Lightning. Real RE10K decode/crop remains a server smoke test.
 """
 import json
+import sys
 import tempfile
 import unittest
 from abc import ABC, abstractmethod
@@ -15,6 +16,9 @@ from typing import Generic, TypeVar
 from unittest.mock import patch
 
 import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from src.foundation.pairs import load_training_pairs
 from src.foundation.prior import FoundationPriorCfg, PriorProvider

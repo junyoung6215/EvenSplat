@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import sys
-import types
-from importlib.util import find_spec
 from pathlib import Path
 
 import torch
@@ -10,24 +8,17 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-if find_spec("jaxtyping") is None:
-    jaxtyping = types.ModuleType("jaxtyping")
+from _test_support import add_function_tests, annotation_only_jaxtyping
 
-    class _Float:
-        def __class_getitem__(cls, item):
-            return item[0]
-
-    jaxtyping.Float = _Float
-    sys.modules["jaxtyping"] = jaxtyping
-
-from src.model.gaussian_retention import (  # noqa: E402
-    GaussianRetention,
-    GaussianRetentionCfg,
-    deterministic_random_scores,
-    flatten_gaussian_scores,
-    gather_gaussians,
-)
-from src.model.types import Gaussians  # noqa: E402
+with annotation_only_jaxtyping():
+    from src.model.gaussian_retention import (
+        GaussianRetention,
+        GaussianRetentionCfg,
+        deterministic_random_scores,
+        flatten_gaussian_scores,
+        gather_gaussians,
+    )
+    from src.model.types import Gaussians
 
 
 def make_gaussians(batch: int = 1, count: int = 5) -> Gaussians:
@@ -265,6 +256,10 @@ def test_fixed_count_requires_an_explicit_budget() -> None:
         assert "keep_count is required" in str(exc)
     else:
         raise AssertionError("Expected fixed_count without keep_count to fail.")
+
+
+def load_tests(loader, suite, pattern):
+    return add_function_tests(suite, globals())
 
 
 if __name__ == "__main__":

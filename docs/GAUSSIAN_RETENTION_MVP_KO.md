@@ -1,6 +1,6 @@
 # NoPoSplat Reliability 기반 Adaptive Gaussian Retention MVP
 
-최종 갱신: 2026-09-29 — 서버 전 prior-supervision / image-detail demand 준비
+최종 갱신: 2026-10-01 — prior loss 설정 계층 및 테스트 실행 오류 수정
 
 이번 추가 구현은 **학습 시에만 offline teacher target으로 Reliability를 보정하고,
 추론에서는 NoPoSplat의 예측 Reliability와 가벼운 image-detail demand로 retention하는
@@ -352,6 +352,41 @@ A100에서 실제 profiling하기 전에는 수치를 단정하지 않는다.
 - 활성화된 Reliability loss에 대응하는 encoder Reliability head가 없는 경우
 
 ## 7. 검증 상태와 검증 환경 구분
+
+### 설정·실행 오류 수정 (2026-10-01)
+
+- `config/loss/reliability_prior.yaml`에 누락된 `reliability_prior:` wrapper를 추가했다.
+  기존 파일은 YAML 문법은 유효했지만 설정이 `loss.weight` 등에 배치되어, 코드가 기대하는
+  `loss.reliability_prior.weight`와 맞지 않았다. Loss 식·weight·학습 구조는 변경하지 않았다.
+- Retention 테스트의 임시 `jaxtyping` 모듈은 필요한 import 구간에서만 사용하고 제거한다.
+  OLP 격리 테스트도 실제 `src` package를 덮어쓰지 않는 전용 namespace를 사용한다.
+- Prior/fixed-pair 테스트의 직접 실행 경로를 수정했다. 기존 함수형 테스트도 전체
+  `unittest discover`에서 실제 실행하도록 등록했다(이전에는 일부가 수집만 되고 실행되지 않음).
+- Loss YAML 구조 회귀 검사와 실제 Hydra preset compose 검사 3개를 추가했다.
+  Hydra 검사는 설치된 환경에서 자동 실행하며, 없으면 명시적으로 skip한다.
+- 재실행 결과: **80개 통과, skip 항목 5개, 실패/오류 0개**.
+  Skip은 Hydra preset 검사 3개와 `test_reliability_loss`, `test_olp_eval_recorder` 모듈 2개다.
+  두 모듈에는 총 8개 테스트가 있으므로 skip 5개를 개별 테스트 5개로 해석하면 안 된다.
+  Skip된 검증은 통과로 계산하지 않는다. 전체 학습·checkpoint·GPU 검증은 여전히 미실행이다.
+
+집 컴퓨터에서 pull 후 **기존 프로젝트 환경의 Python**으로 실행:
+
+```bash
+# 전체 CPU 검사. 마지막 skip 사유까지 확인할 것.
+python -B -m unittest discover -s tests -p 'test_*.py' -v
+
+# Hydra가 설치된 환경에서는 prior/control/mock compose 3개가 skip 없이 통과해야 함.
+python -B tests/test_retention_config.py -v
+
+# 직접 실행 경로 회귀 확인
+python -B tests/test_prior_retention.py
+python -B tests/test_fixed_pair_pipeline.py
+```
+
+Hydra compose 검사는 모델·dataset을 로드하지 않는다. 이 검사 통과만으로 전체
+`load_typed_root_config` 또는 실제 학습 성공을 보장하지 않으므로 Gate 0/1은 별도로 수행한다.
+의존성이 없는 legacy 테스트를 직접 실행하면 `SKIP` 이유를 출력하고 nonzero로 종료한다.
+필요 패키지가 있는 환경에서 import/실행 오류가 발생하면 정상적인 skip으로 숨기지 않는다.
 
 ### 이번 변경 검증 (2026-09-29)
 

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import sys
-import types
-from importlib.util import find_spec
 from pathlib import Path
 
 import torch
@@ -10,21 +8,15 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-if find_spec("jaxtyping") is None:
-    jaxtyping = types.ModuleType("jaxtyping")
+from _test_support import add_function_tests, annotation_only_jaxtyping
 
-    class _Float:
-        def __class_getitem__(cls, item):
-            return item[0]
-
-    jaxtyping.Float = _Float
-    sys.modules["jaxtyping"] = jaxtyping
-
-from src.model.gaussian_retention import (  # noqa: E402
-    GaussianRetention,
-    GaussianRetentionCfg,
-    retention_selection_mask,
-)
+with annotation_only_jaxtyping():
+    from src.model.gaussian_retention import (
+        GaussianRetention,
+        GaussianRetentionCfg,
+        retention_selection_mask,
+    )
+    from src.model.types import Gaussians
 from src.model.local_cell_retention import (  # noqa: E402
     GaussianGridLayout,
     LocalCellAllocator,
@@ -33,7 +25,6 @@ from src.model.local_cell_retention import (  # noqa: E402
     pool_cell_demand,
     retention_distribution_statistics,
 )
-from src.model.types import Gaussians  # noqa: E402
 
 
 def make_gaussians(count: int, batch: int = 1) -> Gaussians:
@@ -227,6 +218,10 @@ def test_pruned_candidates_still_receive_prior_gradients() -> None:
     assert torch.all(gaussians.means.grad[mask] != 0)
     # Dense auxiliary graph: discarded gates still receive a correction.
     assert torch.all(reliability.grad.reshape(1, 32)[~mask] > 0)
+
+
+def load_tests(loader, suite, pattern):
+    return add_function_tests(suite, globals())
 
 
 if __name__ == "__main__":

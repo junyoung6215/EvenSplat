@@ -7,6 +7,7 @@ Run: python -B -m unittest discover -s tests -p test_prior_retention.py -v
 import ast
 import json
 import math
+import sys
 import tempfile
 import unittest
 from abc import ABC, abstractmethod
@@ -19,6 +20,9 @@ import numpy as np
 import torch
 from torch import nn
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 from src.foundation.pairs import load_training_pairs
 from src.foundation.prior import (FoundationPriorCfg, PriorIdentity, PriorProvider,
                                   image_fingerprint, mock_prior, read_prior_cache,
@@ -27,9 +31,6 @@ from src.foundation.supervision import prior_reliability_loss
 from src.model.image_demand import image_detail_demand
 from src.model.local_cell_retention import LocalCellAllocator, LocalCellRetentionCfg, GaussianGridLayout
 from scripts.check_prior_cache import check_or_make
-
-ROOT = Path(__file__).resolve().parents[1]
-
 
 def actual_definitions(relative_path, names, namespace):
     """Execute unmodified source definitions; bypass imports, not implementation."""

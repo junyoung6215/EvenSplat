@@ -7,10 +7,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import torch
-from jaxtyping import install_import_hook
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+from _test_support import add_function_tests, require_test_dependencies
+
+require_test_dependencies("jaxtyping", "beartype", direct_run=__name__ == "__main__")
+from jaxtyping import install_import_hook
 
 with install_import_hook(
     ("src",),
@@ -174,6 +178,10 @@ def test_detach_gate_only_detaches_opacity_path():
     attached_loss.backward()
     torch.testing.assert_close(attached_reliability.grad, torch.tensor([5.0]))
     torch.testing.assert_close(attached_opacity.grad, torch.tensor([0.5]))
+
+
+def load_tests(loader, suite, pattern):
+    return add_function_tests(suite, globals())
 
 
 if __name__ == "__main__":
