@@ -1,4 +1,4 @@
-import os
+import json
 from pathlib import Path
 from typing import Any, Optional
 
@@ -10,10 +10,11 @@ LOG_PATH = Path("outputs/local")
 
 
 class LocalLogger(Logger):
-    def __init__(self) -> None:
+    def __init__(self, output_dir: Path = LOG_PATH) -> None:
         super().__init__()
         self.experiment = None
-        os.system(f"rm -r {LOG_PATH}")
+        # A run must never delete a previous run's local artifacts.
+        self.output_dir = Path(output_dir)
 
     @property
     def name(self):
@@ -29,7 +30,9 @@ class LocalLogger(Logger):
 
     @rank_zero_only
     def log_metrics(self, metrics, step):
-        pass
+        self.output_dir.mkdir(exist_ok=True, parents=True)
+        with (self.output_dir / "metrics.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"step": step, "metrics": metrics}, default=str) + "\n")
 
     @rank_zero_only
     def log_image(
@@ -43,6 +46,6 @@ class LocalLogger(Logger):
         # actually required.
         assert step is not None
         for index, image in enumerate(images):
-            path = LOG_PATH / f"{key}/{index:0>2}_{step:0>6}.png"
+            path = self.output_dir / f"{key}/{index:0>2}_{step:0>6}.png"
             path.parent.mkdir(exist_ok=True, parents=True)
             Image.fromarray(image).save(path)

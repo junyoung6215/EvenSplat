@@ -90,7 +90,7 @@ def train(cfg_dict: DictConfig):
         if wandb.run is not None:
             wandb.run.log_code("src")
     else:
-        logger = LocalLogger()
+        logger = LocalLogger(output_dir / "local")
 
     # Set up checkpointing.
     callbacks.append(

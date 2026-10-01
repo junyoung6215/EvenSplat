@@ -586,10 +586,136 @@ prefetch는 별도다. Frozen teacher가 NoPo GPU 메모리를 점유하지 않�
 
 ## 10. 서버에서 실행할 순서와 명령
 
-이 절은 Linux 서버 Bash 예시다. 경로는 실제 할당 경로로 바꾸고, 기존 checkpoint의
-OLP/reliability 설정을 먼저 확인한다. 아래 config는 `src.main`용 Hydra experiment다.
-기존 `scripts/run_re10k.py`의 `experiment_runs` preset 형식과 다르므로 그 runner에
-그대로 넣지 않는다. 이 작업에서는 기존 runner의 명령 생성 로직을 바꾸지 않았다.
+### 짧은 명령으로 실행하기 — retention 전용 runner (2026-10-01)
+
+반복 실험은 **`scripts/run_retention.py`**를 사용한다. 기존 `run_re10k.py`는 변경하지
+않았고, 서로 config 형식이 다르다. 새 runner 설정은
+**`config/experiment_runs/retention_suite.yaml`**에 있다. 이 파일을 서버의 별도 경로로
+복사해 한 번 수정한 후 `--config`로 지정한다. 이 YAML을 `+experiment=`에 넣지 않는다.
+
+한 번 설정할 항목:
+
+- `data_root`, `initial_checkpoint`, `train_pairs`, `validation_index`, `evaluation_index`, `output_root`.
+  상대 경로는 현재 터미널 위치나 YAML 위치가 아니라 **저장소 루트 기준**이다.
+- `gpu`: 한 장만 지정. 모든 작업을 순차 실행하며 병렬 GPU 실행은 하지 않는다.
+- `olp_enabled/olp_mix/olp_seed`, `reliability_enabled/reliability_r_min`: 기존 checkpoint의 설정과 일치시킨다.
+  기본 템플릿은 OLP+Reliability checkpoint 기준이지 original NoPo checkpoint 기준이 아니다.
+- 학습 step·batch·accumulation·LR·loss weight, local cell 크기 및 demand 강도.
+- 실제 teacher 검증을 마친 경우에만 `prior.root/teacher_id/teacher_settings_id`.
+
+**기본은 미리보기**다. `--execute`가 없으면 파일 생성, 학습, 평가를 하지 않는다.
+출력되는 긴 명령을 다시 복사할 필요 없이 같은 짧은 명령에 `--execute`만 붙이면 된다.
+Windows에서도 미리보기가 가능하지만 `/server/...` 경로와 실험 실행은 서버에서 설정한다.
+
+```bash
+# 아래 명령은 저장소 루트에서 실행. CFG는 본인이 수정한 runner YAML 경로.
+CFG=/server/config/retention_suite.yaml
+
+# 1. matched control: 먼저 미리보기 → 서버 준비 후 실제 실행
+python scripts/run_retention.py --config "$CFG" train --arm control
+python scripts/run_retention.py --config "$CFG" train --arm control --run-id control_s1 --execute
+
+# 2. 같은 초기 checkpoint/pair/schedule의 legacy V1 loss 대조군
+python scripts/run_retention.py --config "$CFG" train --arm legacy --run-id legacy_s1 --execute
+
+# 3. 실제 teacher cache가 검증된 뒤에만 prior loss 대조군
+python scripts/run_retention.py --config "$CFG" train --arm prior --run-id prior_s1 --execute
+```
+
+위 세 학습은 별도 요청으로 실행한다. 하나가 끝났다고 다른 arm을 자동 시작하거나
+기존 checkpoint를 자동으로 다음 arm에 넘기지 않는다. 기본 5,000 optimizer step,
+batch=1, accumulation=1이며 메모리를 측정한 뒤 바꾼다. `--steps`로 이번 run만 바꿀 수 있다.
+새 runner는 mock 학습을 연구 arm으로 제공하지 않는다. mock smoke는 아래 Gate 1을 사용한다.
+
+```bash
+# 4. 선택한 checkpoint 하나에서 평가. 처음에는 validation 50%만 확인
+CKPT=/server/outputs/retention/control_s1/control-full/checkpoints/last.ckpt
+python scripts/run_retention.py --config "$CFG" eval-grid --checkpoint "$CKPT" --ratios 0.5 --execute
+
+# 기본 sweep: 4 score × 25/50/75% + OFF/100% 확인 = 14개 순차 평가
+python scripts/run_retention.py --config "$CFG" eval-grid --checkpoint "$CKPT" --execute
+
+# 같은 checkpoint·budget에서 image-detail local demand ON/OFF만 비교
+python scripts/run_retention.py --config "$CFG" eval-grid --checkpoint "$CKPT" --scores reliability --ratios 0.5 --local both --execute
+
+# 최종 설정 확정 후에만 held-out test index로 전환
+python scripts/run_retention.py --config "$CFG" eval-grid --checkpoint "$CKPT" --split test --execute
+```
+
+`eval-grid`의 기본 split은 **validation**이다. 파일 이름만 다른 동일 scene을 사용하지
+않도록 실행 전에 validation/test의 유효 scene ID 중복을 차단한다. 학습 실행에서는
+train pair와 두 평가 index의 scene 중복도 차단한다. 따라서 두 index를 실제로 분리하여
+준비해야 한다. 데이터 자체의 frame 범위·카메라·실제 cache coverage 검증을 대신하는 것은 아니다.
+
+OFF와 100%는 배선 확인용이며 별개의 방법으로 중복 집계하지 않는다. 이 runner는 두 조건을
+실행할 뿐 **영상 pixel parity를 자동 판정하지는 않는다**. 첫 서버 smoke에서 별도로 확인한다.
+모든 평가 조건은 동일한 pose alignment 정책을 사용한다. 기본 `align_pose=true`에는
+기존 camera pose optimization 비용이 포함되므로 latency 실험으로 해석하지 않는다.
+
+```bash
+# 5. 유망 checkpoint에서 pruning-aware FT와 같은 step의 full-count continuation
+# checkpoint/arm/step은 두 명령에서 동일하게 유지. 예시는 control arm.
+python scripts/run_retention.py --config "$CFG" train --arm control --checkpoint "$CKPT" --steps 2000 --prune --ratio 0.5 --score reliability --run-id ft_r50_s1 --execute
+python scripts/run_retention.py --config "$CFG" train --arm control --checkpoint "$CKPT" --steps 2000 --run-id continuation_s1 --execute
+
+# local을 켜고 FT하려면 첫 명령에 --local 추가. 평가에서도 --local on으로 맞춘다.
+# prior/legacy loss를 유지할 경우 두 명령 모두 --arm prior 또는 --arm legacy로 바꾼다.
+
+# 6. 여러 run의 평가 지표를 하나의 CSV로 정리. 새 파일명만 허용.
+python scripts/run_retention.py summarize --root /server/outputs/retention --output /server/outputs/retention_summary_v1.csv
+```
+
+**초기화와 resume 구분:** `train --checkpoint`는 encoder weight 초기화이며
+optimizer/global step은 새로 시작한다. FT와 continuation도 같은 원칙이다. 모든 새 학습은
+`save_weights_only=false`로 저장하지만, 이 runner에는 중단 지점의 optimizer를 복원하는
+full-resume 옵션이 없다. 정확한 resume가 필요하면 보존된 Hydra 설정을 사용하여 기존
+`checkpointing.load` 경로로 별도 실행해야 한다. `--checkpoint`를 resume로 오해하지 않는다.
+OLP mix는 고정하고, auxiliary loss warm-up은 새 학습 step 기준으로 다시 적용한다.
+
+결과 폴더 구조:
+
+```text
+output_root/run-id/
+  manifest.json                  # argv, 설정, checkpoint/index SHA256, Git 상태, 작업 상태
+  control-full.log               # 각 subprocess의 stdout/stderr (평가는 조건별 .log)
+  control-full/
+    .hydra/                     # Hydra가 저장한 실제 config/override
+    checkpoints/
+    pretrained_load_audit.json
+    local/metrics.jsonl         # W&B OFF에서도 학습/검증 scalar 기록
+    local/...                   # 해당 run의 시각화
+  baseline-off/test_metrics.json # eval-grid인 경우 조건별 평가 결과
+```
+
+`run-id`를 생략하면 UTC 시각+무작위 ID를 생성한다. 같은 폴더 재사용은 실패 처리하여
+기존 결과를 덮어쓰지 않는다. 한 작업이 실패하면 다음 작업을 시작하지 않고 상태를 남긴다.
+진행 상황은 해당 `.log`를 확인한다. 강제 종료 시 manifest에 `running`이 남을 수 있으므로
+그것만으로 현재 프로세스가 살아 있다고 판단하지 않는다. 실패 후에는 새 run-id로 재실행한다.
+
+CSV는 PSNR/SSIM/LPIPS, 점수·비율·local 여부, 기록된 실제 Gaussian 수와 checkpoint/index
+hash를 모은다. 누락/실패는 0점으로 채우지 않고 상태와 빈칸으로 남긴다. OFF run은
+retention count가 기록되지 않을 수 있다. 서로 다른 checkpoint/split/alignment의 결과를
+자동 평균하지 않으며, 전체 설정은 CSV의 manifest 경로에서 확인한다.
+**CUDA 동기화 시간·단계별 peak memory·tail 통계의 새 자동 측정 기능은 추가하지 않았다.**
+그 부분은 아래 측정 주의와 Gate 절차에 따라 서버에서 별도로 검증한다.
+
+이번 자동화 검증은 작은 가짜 파일·subprocess 대역으로 명령 생성, 옵션 검증, 데이터 split
+중복, 출력 충돌 방지, 실패 중단, CSV 및 로거 경로 분리를 확인한다. 실제 GPU 학습 검증은
+아니다. 서버의 정식 의존성 환경에서는 아래 테스트의 Hydra compose 항목까지 통과해야 한다.
+2026-10-01 로컬 재검사 결과는 전체 **98개 통과, 6개 항목 skip**이다. 새 runner/로거 검사는
+18개 통과했으며, 새 Hydra 명령 조합 검사 1개는 Hydra/OmegaConf 부재로 skip했다.
+기존 skip 5개도 그대로다. 따라서 전체 GPU 실행까지 오류가 없음을 보장하는 수치가 아니다.
+
+```bash
+python -B -m unittest discover -s tests -p 'test_retention_runner.py' -v
+python -B -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+### 수동 명령과 단계별 점검
+
+이하 명령은 Linux 서버 Bash 예시다. 경로는 실제 할당 경로로 바꾸고, 기존 checkpoint의
+OLP/reliability 설정을 먼저 확인한다. 아래 `+experiment`는 `src.main`용 Hydra experiment다.
+반복 실험은 위 runner를 우선 사용하고, mock/cache 준비 및 원인 점검은 아래 명령을 사용한다.
 
 ### Gate 0 — 환경·checkpoint·OFF parity
 
