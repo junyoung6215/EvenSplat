@@ -89,6 +89,7 @@ def build_plan(cfg, args):
     t = cfg["train"]
     for name, value in (("olp_enabled", cfg["olp_enabled"]),
                         ("reliability_enabled", cfg["reliability_enabled"]),
+                        ("train.validation_videos", t["validation_videos"]),
                         ("evaluation.align_pose", cfg["evaluation"]["align_pose"]),
                         ("evaluation.save_image", cfg["evaluation"]["save_image"])):
         if type(value) is not bool:
@@ -144,14 +145,21 @@ def build_plan(cfg, args):
         "data_loader.test.persistent_workers": False,
     }
     if train:
+        scope = args.train_scope if args.train_scope is not None else t["finetune_scope"]
+        if scope not in ("full", "heads"):
+            raise ValueError("train.finetune_scope must be full or heads")
+        accumulate = args.accumulate if args.accumulate is not None else t["accumulate"]
+        positive_int(accumulate, "accumulate")
         if args.local and not args.prune:
             raise ValueError("--local requires --prune; otherwise allocation has no effect")
         if arm != "control" and not cfg["reliability_enabled"]:
             raise ValueError("Auxiliary reliability losses require the reliability head")
         base.update({
             "trainer.max_steps": args.steps if args.steps is not None else t["steps"],
-            "trainer.accumulate_grad_batches": t["accumulate"],
+            "trainer.accumulate_grad_batches": accumulate,
+            "train.finetune_scope": scope,
             "trainer.val_check_interval": t["validation_interval"],
+            "train.validation_videos": t["validation_videos"],
             "checkpointing.every_n_train_steps": t["checkpoint_interval"],
             "data_loader.train.batch_size": t["batch_size"],
             "data_loader.train.num_workers": t["workers"],
@@ -216,6 +224,9 @@ def build_plan(cfg, args):
                      "score": score, "ratio": ratio, "local": local, "retention": enabled,
                      "status": "pending"})
     return {"schema_version": 1, "command": args.command, "arm": arm if train else None,
+            "training": ({"finetune_scope": scope, "accumulate": accumulate,
+                          "effective_batch_size": t["batch_size"] * accumulate,
+                          "optimizer_steps": base["trainer.max_steps"]} if train else None),
             "split": "train" if train else args.split, "checkpoint": str(checkpoint),
             "index": str(index), "settings": cfg, "output": str(output), "jobs": jobs}
 
@@ -370,6 +381,8 @@ def parser():
         if name == "train":
             p.add_argument("--arm", choices=("control", "legacy", "prior"), default="control")
             p.add_argument("--steps", type=int)
+            p.add_argument("--train-scope", choices=("full", "heads"))
+            p.add_argument("--accumulate", type=int)
             p.add_argument("--prune", action="store_true")
             p.add_argument("--ratio", type=float, default=.5)
             p.add_argument("--score", choices=SCORES, default="reliability")

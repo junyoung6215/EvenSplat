@@ -46,6 +46,9 @@ dataset:
 loss:
   reliability_prior:
     enabled: true
+train:
+  # Scalar metrics and comparison images remain enabled. Videos are opt-in.
+  validation_videos: false
 optimizer:
   lr: 0.00002
   warm_up_steps: 125

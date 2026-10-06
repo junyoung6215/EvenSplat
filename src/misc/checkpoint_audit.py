@@ -19,6 +19,7 @@ def load_encoder_pretrained_weights(
     weight_path: str | Path,
     audit_path: str | Path | None = None,
     strict: bool = False,
+    require_backbone: bool = False,
 ) -> dict[str, Any]:
     """Load encoder pretrained weights and write a small audit summary."""
     weight_path = Path(weight_path)
@@ -47,11 +48,17 @@ def load_encoder_pretrained_weights(
     encoder_keys = set(encoder.state_dict())
     loaded_keys = set(ckpt_weights)
     matched_keys = sorted(encoder_keys & loaded_keys)
+    missing_backbone = sorted(
+        name for name, _ in encoder.named_parameters()
+        if name.startswith("backbone.") and name in missing_keys
+    )
 
     summary = {
         "weight_path": str(weight_path),
         "checkpoint_format": checkpoint_format,
         "strict": strict,
+        "require_backbone": require_backbone,
+        "missing_backbone_parameters": missing_backbone,
         "loaded_key_count": len(ckpt_weights),
         "matched_key_count": len(matched_keys),
         "missing_key_count": len(missing_keys),
@@ -72,4 +79,9 @@ def load_encoder_pretrained_weights(
         audit_path.parent.mkdir(parents=True, exist_ok=True)
         audit_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
 
+    if require_backbone and missing_backbone:
+        raise RuntimeError(
+            f"heads training requires all frozen backbone weights; missing {missing_backbone[:5]}. "
+            "Use a complete NoPoSplat checkpoint. See pretrained_load_audit.json."
+        )
     return summary

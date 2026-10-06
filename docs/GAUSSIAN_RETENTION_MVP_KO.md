@@ -1,12 +1,18 @@
 # NoPoSplat Reliability 기반 Adaptive Gaussian Retention MVP
 
-최종 갱신: 2026-10-01 — prior loss 설정 계층 및 테스트 실행 오류 수정
+최종 갱신: 2026-10-06 — 선택형 backbone freeze / head fine-tuning, 실행기 옵션 및 validation 경로 수정
 
-이번 추가 구현은 **학습 시에만 offline teacher target으로 Reliability를 보정하고,
+현재 구현은 **학습 시에만 offline teacher target으로 Reliability를 보정하고,
 추론에서는 NoPoSplat의 예측 Reliability와 가벼운 image-detail demand로 retention하는
 구조**다. 기존 V1 loss와 foundation 없는 경로는 유지한다. 실제 VGGT-Ω/DA3 실행 및
 native output → teacher target 변환기는 아직 구현·검증하지 않았다. 아래 9~12절은
 서버 할당 후 실행할 최신 작업 순서이며, 성능이 검증됐다는 뜻은 아니다.
+
+이번에는 기존 checkpoint를 활용한 짧은 실험을 위해 **전체 학습(`full`) / backbone을
+고정한 출력 head 학습(`heads`)**을 선택할 수 있게 추가했다. 기본값은 기존 `full`이다.
+`heads`는 Reliability만 학습하는 것이 아니라 **geometry·Gaussian·Reliability head를
+함께 학습**한다. 학습 범위만 바꾸며 retention, loss, prior, local demand는 독립적으로
+선택한다. 서버에서는 먼저 50% budget의 짧은 heads/full pilot으로 품질과 비용을 비교한다.
 
 이 문서는 NoPoSplat에 추가한 Gaussian Reliability 기반 hard retention과
 local-cell allocation의 현재 구현 상태, 연구 의도, 설정 방법, 검증 범위를 한곳에
@@ -269,6 +275,8 @@ Retention과 local allocator는 자체 trainable parameter가 없고 checkpoint 
 - budget 방식: `mode`
 - local allocation: `local_cells.enabled`
 - cell 최소 유지: `local_cells.min_per_cell`
+- 학습 범위: `train.finetune_scope=full|heads` — 아래 설명 참조
+- 학습 validation 영상: `train.validation_videos` — 기본 true, retention preset/runner false
 
 Reliability 관련 추가 의미:
 
@@ -279,6 +287,46 @@ Reliability 관련 추가 의미:
   있으므로 진단용 ablation으로만 사용한다.
 - V1 Reliability auxiliary loss의 warm-up 계수가 0이면 추가 context rendering을 생략한다.
   새 prior loss는 활성화된 뒤에도 V1용 context rendering을 요구하지 않는다.
+
+### 학습 범위 선택: 전체 학습 / 출력 head fine-tuning
+
+구현: `src/model/training_scope.py`의 `apply_training_scope`, `ModelWrapper.__init__/train`,
+`src/main.py`의 초기화 검사·학습 범위 보고서. 모델 구조나 state_dict key를 바꾸지 않는다.
+
+| 범위 | `full` (기본값) | `heads` |
+| --- | --- | --- |
+| `encoder.backbone` 전체 | 기존 학습 설정 유지 | gradient OFF, eval mode 고정 |
+| Transformer encoder·두 decoder·intrinsic embedding | 기존 학습 설정 유지 | 모두 고정 |
+| `downstream_head1/2` | 학습 | 학습 — Gaussian center/geometry 보정 |
+| `gaussian_param_head` / `gaussian_param_head2` | 학습 | 학습 — scale·rotation·opacity·SH 및 활성화된 Reliability branch |
+| OLP-H, retention, local allocator | 기존 설정 유지 | 동일 — 학습 범위와 별개 |
+
+여기서 고정하는 Transformer decoder는 **backbone 내부 decoder**다. Gaussian 출력 head나
+rasterizer를 고정한다는 뜻이 아니다. `heads`에서도 선택된 Gaussian 속성을 통해 geometry와
+Gaussian head로 reconstruction gradient가 흐른다. Hard top-k의 index 결정 자체는 미분하지
+않으며, Reliability의 reconstruction gradient에는 기존 soft gate가 사용된다.
+
+- Frozen backbone은 optimizer에서 제외된다. Validation 뒤 `train()`으로 돌아와도 backbone만
+  eval 상태를 유지하고 출력 heads는 train 상태로 복귀한다.
+- 일반적인 RGB/intrinsics 입력은 gradient를 요구하지 않으므로 frozen backbone 내부 backward
+  graph가 만들어지지 않는다. **전체 encoder를 no_grad/inference_mode로 감싸지는 않는다.**
+- Backbone backward·gradient·optimizer state 비용은 줄지만, backbone forward·출력 feature·head
+  backward·rasterizer는 남는다. 추론 구조 및 encoder forward 비용은 바뀌지 않는다.
+- `full`은 기존 requires_grad/LR 설정을 그대로 사용한다. 기존 LR 분류도 유지: Gaussian 및
+  Reliability head는 `optimizer.lr`, geometry heads는 `lr × backbone_lr_multiplier` 그룹이다.
+  Runner 기본값에서는 각각 `2e-5`, `2e-6`이며 warm-up/scheduler도 기존 방식이다.
+- `heads`는 저장된 NoPoSplat checkpoint가 필요하다. 초기화 시 backbone parameter 누락은 오류로
+  처리해 무작위 backbone을 고정하는 실수를 막는다. Head 누락은 기존 non-strict 로드처럼 허용하므로
+  `pretrained_load_audit.json`에서 **기존 geometry/Gaussian/Reliability 가중치가 복원됐는지** 확인한다.
+- 학습 범위 변경은 **새 run에서** 한다. `train --checkpoint`로 가중치만 가져오면 optimizer와
+  step은 초기화된다. 같은 범위의 정확한 resume는 `checkpointing.load`를 사용하며,
+  `full ↔ heads` optimizer resume는 차단한다. 범위 표식이 없는 과거 checkpoint는 full로 간주한다.
+- `heads` checkpoint에도 전체 가중치가 저장된다. 기존 평가 경로로 불러올 수 있고 추론 시 추가 모듈,
+  teacher 실행, per-scene post-optimization은 요구하지 않는다.
+
+성능 보장은 아니다. 기존 feature로 충분히 보정되지 않으면 heads가 full보다 낮은 품질에 머물 수 있다.
+따라서 2,000-step pilot 후 회복 추세가 있으면 5,000 step까지 연장하고, 같은 비용 조건의
+짧은 full fine-tuning보다 지속적으로 불리하면 full로 돌아간다. 부분 block unfreeze는 이번 범위 밖이다.
 
 ## 4. 권장 ablation 묶음
 
@@ -352,6 +400,49 @@ A100에서 실제 profiling하기 전에는 수치를 단정하지 않는다.
 - 활성화된 Reliability loss에 대응하는 encoder Reliability head가 없는 경우
 
 ## 7. 검증 상태와 검증 환경 구분
+
+### Head fine-tuning 선택형 모드 (2026-10-06 최신 검사)
+
+전체 unittest **134개 중 128개 통과, 6개 skip**. 신규 범위/실행기 회귀 검사는 17개다.
+실제 CPU torch optimizer로 frozen weight·buffer 불변, geometry/Gaussian/Reliability head 갱신,
+backbone gradient 부재, full 모드 gradient 유지, optimizer 포함 범위와 기존 LR 그룹을 검사했다.
+또한 parameter key 보존, pretrained backbone 누락 차단, checkpoint scope resume 검사,
+학습·검증 모드 전환, runner의 scope/accumulation 옵션과 manifest 기록을 확인했다.
+작은 모델에서 동일 범위 optimizer state 재로드 및 저장 가중치를 full/heads로 불러온 뒤
+eval 출력이 같은지도 확인했다.
+
+현재 로컬에 전체 모델 의존성이 없어 Lightning wrapper 메서드는 원본 AST를 경량 harness에서
+실행했다. Skip은 Hydra compose 4개와 jaxtyping/beartype 의존 테스트 2개다. 실제 NoPoSplat
+checkpoint 복원, Lightning fit/resume 및 GPU rasterizer까지 검증했다는 의미는 아니다.
+서버에서 첫 smoke 때 scope 보고서·실제 gradient·validation 복귀·동일 범위 resume를 확인한다.
+Smoke 전용 서버 YAML에서는 `steps=4`, `accumulate=1`, `validation_interval=1`,
+`checkpoint_interval=2`로 두고 `train --train-scope heads --prune`를 실행하면 학습 도중 validation까지
+점검할 수 있다. 이 임시 설정과 결과는 연구 pilot에 섞지 않고, 실제 pilot 전에 원 설정으로 복귀한다.
+
+### Validation 경로 수정 (2026-10-06)
+
+- Validation 영상(interpolation/wobble/extended)은 정량 지표 계산에 사용한 **동일한
+  retention 결과**를 재사용한다. 영상마다 encoder를 다시 실행하거나 random selection을
+  다시 뽑지 않는다. Retention OFF/100%에서는 전달받은 전체 Gaussian을 그대로 사용한다.
+- 학습 중 영상 생성은 `train.validation_videos`로 제어한다. 기존 NoPo 설정의 기본값은
+  `true`로 유지하고, retention prior/control/mock preset과 retention runner는 `false`로
+  시작한다. 비교 이미지와 validation 지표는 계속 기록한다. 영상이 필요하면 runner YAML의
+  `train.validation_videos: true` 또는 직접 Hydra 실행의 `train.validation_videos=true`를 사용한다.
+  `test.save_video`와는 별개이며, 영상을 켜면 기존 30/60-frame 렌더링 비용은 발생한다.
+- 작은 validation subset의 iterator가 소진되면 새 iterator로 다시 시작한다. 새 iterator에서도
+  sample이 없으면 명시적인 오류를 내므로 잘못된 index나 필터링 문제를 숨기지 않는다.
+- 기존 **validation당 한 sample** 방식은 변경하지 않았다. `val/psnr`은 subset 전체 평균이
+  아니며, subset 전체 비교는 기존 `eval-grid --split validation`으로 수행한다.
+- 기존 NoPo의 test pose alignment, 평가 loss/지표, benchmark 방식은 변경하지 않았다.
+
+새 회귀 검사 13개는 CPU DataLoader의 반복/빈 데이터 처리, 실제 validation 메서드의
+Gaussian 재사용 경로, 영상 ON/OFF·trajectory 전달, config/runner 옵션을 확인한다.
+모델 메서드 검사는 실제 AST를 실행하되 renderer와 영상 저장을 대역으로 바꾼 검사이며,
+실제 GPU 렌더링·Lightning 실행 검증을 대신하지 않는다.
+
+```bash
+python -B -m unittest discover -s tests -p 'test_validation_retention.py' -v
+```
 
 ### 설정·실행 오류 수정 (2026-10-01)
 
@@ -586,7 +677,7 @@ prefetch는 별도다. Frozen teacher가 NoPo GPU 메모리를 점유하지 않�
 
 ## 10. 서버에서 실행할 순서와 명령
 
-### 짧은 명령으로 실행하기 — retention 전용 runner (2026-10-01)
+### 짧은 명령으로 실행하기 — retention 전용 runner (2026-10-06 갱신)
 
 반복 실험은 **`scripts/run_retention.py`**를 사용한다. 기존 `run_re10k.py`는 변경하지
 않았고, 서로 config 형식이 다르다. 새 runner 설정은
@@ -600,12 +691,46 @@ prefetch는 별도다. Frozen teacher가 NoPo GPU 메모리를 점유하지 않�
 - `gpu`: 한 장만 지정. 모든 작업을 순차 실행하며 병렬 GPU 실행은 하지 않는다.
 - `olp_enabled/olp_mix/olp_seed`, `reliability_enabled/reliability_r_min`: 기존 checkpoint의 설정과 일치시킨다.
   기본 템플릿은 OLP+Reliability checkpoint 기준이지 original NoPo checkpoint 기준이 아니다.
-- 학습 step·batch·accumulation·LR·loss weight, local cell 크기 및 demand 강도.
+- 학습 범위 `train.finetune_scope`, step·batch·accumulation·LR·loss weight, local cell 크기 및 demand 강도.
 - 실제 teacher 검증을 마친 경우에만 `prior.root/teacher_id/teacher_settings_id`.
 
 **기본은 미리보기**다. `--execute`가 없으면 파일 생성, 학습, 평가를 하지 않는다.
 출력되는 긴 명령을 다시 복사할 필요 없이 같은 짧은 명령에 `--execute`만 붙이면 된다.
 Windows에서도 미리보기가 가능하지만 `/server/...` 경로와 실험 실행은 서버에서 설정한다.
+
+**우선 실행할 pilot: checkpoint 복원·OFF/100% parity와 아래 Gate 1 smoke를 통과한 뒤**, 같은
+checkpoint·pair·seed·50% budget·LR·step·accumulation에서 학습 범위만 비교한다. 실제 teacher cache가
+없어도 control arm으로 가능하다. 기존 OLP/신뢰도 설정은 checkpoint와 맞춰야 한다.
+
+```bash
+CFG=/server/config/retention_suite.yaml
+
+# 기본은 미리보기. 확인 후 같은 명령에 --execute를 붙인다.
+python scripts/run_retention.py --config "$CFG" train --arm control --train-scope heads --accumulate 4 --steps 2000 --prune --ratio 0.5 --score reliability --run-id pilot_heads_r50
+python scripts/run_retention.py --config "$CFG" train --arm control --train-scope full --accumulate 4 --steps 2000 --prune --ratio 0.5 --score reliability --run-id pilot_full_r50
+
+# 학습 전 초기 checkpoint의 50% 기준선
+python scripts/run_retention.py --config "$CFG" eval-grid --scores reliability --ratios 0.5 --run-id before_ft
+
+# heads 학습 후. full pilot도 checkpoint 경로만 바꿔 동일하게 평가한다.
+python scripts/run_retention.py --config "$CFG" eval-grid --checkpoint /server/outputs/retention/pilot_heads_r50/control-pruned/checkpoints/last.ckpt --scores reliability --ratios 0.5 --run-id after_heads_ft
+```
+
+`run-id`는 실제 실행한 폴더를 재사용할 수 없다. 출력 경로 예시는 YAML의 `output_root`에 맞춰
+바꾼다. `--train-scope`와 `--accumulate`는 이번 run만 YAML을 덮어쓴다. 결정한 범위와 accumulation을
+서버용 YAML에 저장하면 이후 A/B/C 및 FT/continuation에 매번 긴 옵션을 입력할 필요가 없다.
+폴더의 `control-full`은 **Gaussian full-count**라는 의미이며 backbone 학습 범위와는 다르다.
+
+판단 기준: heads의 화질 회복 추세·full 대비 품질 차이·초/optimizer step·peak memory를 함께 확인한다.
+허용 품질 차이는 pilot 전에 정하고 같은 validation pair의 PSNR/SSIM/LPIPS 및 실패 사례로 판단한다.
+짧은 학습의 마지막 값 하나만으로 결론 내리지 않는다. 처음부터 모든 loss/local 조합을 학습하지 않는다.
+
+**Step과 시간 해석:** batch=1, accumulation=4이면 한 optimizer update에 pair 4개를 사용한다
+(단일 GPU 기준). 2,000 step은 대략 8,000 pair 노출이다. 과거 300K step/약 5일이 같은 설정이었다면
+동일 속도 단순 환산은 2K 약 48분, 5K 약 2시간이지만 이는 보장 시간이 아니다. 실제 데이터 I/O,
+validation 빈도, loss와 freeze 효과를 측정해 예상 시간을 다시 계산한다.
+현재 `val_check_interval=500`은 **train batch 기준**이라 accumulation=4에서 약 125 update마다
+validation하며, `checkpoint_interval=500`은 optimizer update 기준이다. 비교군의 설정을 동일하게 유지한다.
 
 ```bash
 # 아래 명령은 저장소 루트에서 실행. CFG는 본인이 수정한 runner YAML 경로.
@@ -624,7 +749,8 @@ python scripts/run_retention.py --config "$CFG" train --arm prior --run-id prior
 
 위 세 학습은 별도 요청으로 실행한다. 하나가 끝났다고 다른 arm을 자동 시작하거나
 기존 checkpoint를 자동으로 다음 arm에 넘기지 않는다. 기본 5,000 optimizer step,
-batch=1, accumulation=1이며 메모리를 측정한 뒤 바꾼다. `--steps`로 이번 run만 바꿀 수 있다.
+batch=1, accumulation=1, scope=full이다. 이는 기존 명령의 호환 기본값이며 새로운 권장 pilot은
+위처럼 scope와 accumulation을 명시한다. `--steps`, `--accumulate`, `--train-scope`로 이번 run만 바꿀 수 있다.
 새 runner는 mock 학습을 연구 arm으로 제공하지 않는다. mock smoke는 아래 Gate 1을 사용한다.
 
 ```bash
@@ -655,6 +781,7 @@ OFF와 100%는 배선 확인용이며 별개의 방법으로 중복 집계하지
 ```bash
 # 5. 유망 checkpoint에서 pruning-aware FT와 같은 step의 full-count continuation
 # checkpoint/arm/step은 두 명령에서 동일하게 유지. 예시는 control arm.
+# 학습 범위와 accumulation은 앞서 선택해 서버 YAML에 저장한 값을 두 run에 동일하게 사용한다.
 python scripts/run_retention.py --config "$CFG" train --arm control --checkpoint "$CKPT" --steps 2000 --prune --ratio 0.5 --score reliability --run-id ft_r50_s1 --execute
 python scripts/run_retention.py --config "$CFG" train --arm control --checkpoint "$CKPT" --steps 2000 --run-id continuation_s1 --execute
 
@@ -682,6 +809,7 @@ output_root/run-id/
     .hydra/                     # Hydra가 저장한 실제 config/override
     checkpoints/
     pretrained_load_audit.json
+    training_scope.json         # 학습 범위, 실제 trainable/frozen parameter 이름·개수
     local/metrics.jsonl         # W&B OFF에서도 학습/검증 scalar 기록
     local/...                   # 해당 run의 시각화
   baseline-off/test_metrics.json # eval-grid인 경우 조건별 평가 결과
@@ -696,6 +824,8 @@ CSV는 PSNR/SSIM/LPIPS, 점수·비율·local 여부, 기록된 실제 Gaussian 
 hash를 모은다. 누락/실패는 0점으로 채우지 않고 상태와 빈칸으로 남긴다. OFF run은
 retention count가 기록되지 않을 수 있다. 서로 다른 checkpoint/split/alignment의 결과를
 자동 평균하지 않으며, 전체 설정은 CSV의 manifest 경로에서 확인한다.
+학습 manifest의 `training`에는 CLI까지 반영된 scope·accumulation·effective batch·optimizer step이
+기록된다. 평가 CSV에 학습 범위를 자동 추정해 넣지는 않으므로 checkpoint와 원 학습 manifest를 함께 보관한다.
 **CUDA 동기화 시간·단계별 peak memory·tail 통계의 새 자동 측정 기능은 추가하지 않았다.**
 그 부분은 아래 측정 주의와 Gate 절차에 따라 서버에서 별도로 검증한다.
 
@@ -892,18 +1022,20 @@ pose alignment OFF. 품질 평가의 pose alignment ON 결과는 별도 표로 �
 
 | 주 | 실행 | 다음 단계 진입 조건 / 중단 조건 |
 | --- | --- | --- |
-| 1 | 환경·checkpoint 복원, config/typed load, OFF/100% parity, 4-step mock, baseline 50% | parity/count/backward 실패 시 다른 연구 기능 실험 중단하고 배선부터 해결 |
+| 1 | 환경·checkpoint 복원, OFF/100% parity, 4-step mock 및 heads fit/resume smoke, baseline 50%, heads/full 2K pilot | parity/count/backward 실패 시 배선부터 해결. heads의 비용 절감·품질 회복을 확인해 범위 선택 |
 | 2 | 실제 teacher 8~32 pair adapter, 128~512 pair 비용/정렬 pilot | unknown 처리·overlay·coverage·저장비용이 검증될 때만 subset cache 확장 |
 | 3 | matched reconstruction-only / V1 / prior pilot, local OFF | full-count 품질 심각한 하락, r collapse, valid signal 부재면 weight/labels 점검; 1회 수정 후에도 개선 없으면 prior는 보류 |
 | 4 | 선택 checkpoint의 25/50/75% Pareto, image-detail demand ON/OFF | 동일 budget에서 개선 없으면 local OFF를 최종모델로 채택 가능 |
 | 5 | 유망 arm pruning-aware FT + 같은 step full-count continuation | 회복 여부 및 비용 비교; expansion으로 범위 확대하지 않음 |
 | 6 | seed 반복/held-out 최종평가, synchronized 성능측정, 사례·표·논문 정리 | test로 설정 재튜닝 금지, 검증된 결과만 contribution으로 주장 |
 
-필수: 원 checkpoint 기준선, matched A/B/C loss 비교(teacher 성공 시), 동일 count의
+필수: 원 checkpoint 기준선, 짧은 heads/full pilot로 학습 범위 결정, matched A/B/C loss 비교(teacher 성공 시), 동일 count의
 random/base-opacity/reliability 비교, local ON/OFF, pruning-aware FT 전후와 continuation.
 `opacity=alpha*r`도 기록하면 soft suppression과 ranking 효과를 구분하기 쉽다.
 필요 이상으로 모든 조합을 학습하지 않는다. score/budget/demand의 첫 비교는 **재학습 없는
 같은 checkpoint 평가**로 끝낸다. 최종 유망 설정에 한해 최소 2 seed 반복을 우선한다.
+학습 범위를 결정한 뒤에는 loss/local/FT ablation에서 범위·accumulation을 고정한다.
+300K 전체 재학습을 반복하는 계획이 아니라 기존 checkpoint의 2K~5K pilot과 유망 설정의 추가 학습이 우선이다.
 
 선택: 8 vs 16 cell, min_per_cell=1, elastic threshold, 두 번째 teacher(DA3), 확대된 subset,
 depth-derived demand. 제외: bounded expansion, learned demand head, 전체 데이터 cache,
@@ -920,6 +1052,9 @@ image-detail local allocator, pruning-aware fine-tuning은 사용 가능**하다
 신뢰도를 보정할 수 있는 분리된 loss와 안전한 cache 입력 경로를 추가했습니다. 이미지
 detail에 따라 남길 위치를 조절하는 가벼운 demand도 구현했습니다. 각각 끄고 켤 수 있어
 loss의 효과, 선택 기준의 효과, pruning-aware fine-tuning의 효과를 따로 비교할 수 있습니다.
+학습 시간을 줄이기 위해 기존 backbone을 고정하고 geometry·Gaussian·Reliability head만
+fine-tuning하는 선택형 모드도 추가했습니다. 먼저 짧은 전체 fine-tuning과 비교해 품질을
+얼마나 보존하는지 확인하고, 부족하면 기존 전체 학습으로 돌아갈 수 있습니다.
 현재 확인한 것은 CPU 수준의 동작과 gradient이며, geometry prior의 실제 효용과 품질·속도
 개선은 서버 실험으로 검증해야 합니다. Foundation 모델을 추론마다 추가 실행하는 설계는
 아니며, 잘 안 될 경우 기존 방식으로 돌아갈 수 있습니다.”

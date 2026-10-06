@@ -63,12 +63,14 @@ class HydraRetentionConfigTests(unittest.TestCase):
         self.assertEqual(loss.weight, .001)
         self.assertFalse(loss.allow_mock)
         self.assertEqual(cfg.dataset.re10k.view_sampler.name, "fixed_pairs")
+        self.assertFalse(cfg.train.validation_videos)
 
     def test_control_preset_disables_prior(self):
         cfg = self.compose("retention_control")
         loss = self.assert_loss_contract(cfg)
         self.assertFalse(loss.enabled)
         self.assertFalse(cfg.dataset.re10k.foundation_prior.enabled)
+        self.assertFalse(cfg.train.validation_videos)
 
     def test_mock_preset_keeps_diagnostic_flags_and_warmup(self):
         cfg = self.compose("retention_mock")
@@ -77,6 +79,7 @@ class HydraRetentionConfigTests(unittest.TestCase):
         self.assertTrue(loss.allow_mock)
         self.assertEqual((loss.warmup_start, loss.warmup_end), (0, 0))
         self.assertTrue(cfg.dataset.re10k.foundation_prior.allow_mock)
+        self.assertFalse(cfg.train.validation_videos)
 
 
 if __name__ == "__main__":

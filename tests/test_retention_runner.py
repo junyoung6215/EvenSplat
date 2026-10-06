@@ -61,6 +61,32 @@ class RetentionRunnerTests(unittest.TestCase):
         prior = self.values(plans[2]["jobs"][0])
         self.assertEqual(prior["loss.reliability_prior.warmup_start"], 500)
 
+    def test_training_scope_defaults_and_cli_overrides(self):
+        self.assertEqual(self.values(self.plan("train")["jobs"][0])["train.finetune_scope"], "full")
+        self.cfg["train"]["finetune_scope"] = "heads"
+        p = self.plan("train", "--accumulate", "4", "--steps", "2000")
+        v = self.values(p["jobs"][0])
+        self.assertEqual(v["train.finetune_scope"], "heads")
+        self.assertEqual(v["trainer.accumulate_grad_batches"], 4)
+        self.assertEqual(p["training"], dict(finetune_scope="heads", accumulate=4,
+                                           effective_batch_size=4, optimizer_steps=2000))
+        self.assertEqual(self.cfg["train"]["accumulate"], 1)  # no settings mutation
+        self.assertEqual(self.values(self.plan("train", "--train-scope", "full")["jobs"][0])["train.finetune_scope"], "full")
+        self.assertIsNone(self.plan("eval-grid")["training"])
+
+    def test_scope_ablation_changes_only_scope_and_run_directory(self):
+        a = self.values(self.plan("train", "--train-scope", "heads", "--prune", "--accumulate", "4")["jobs"][0])
+        b = self.values(self.plan("train", "--train-scope", "full", "--prune", "--accumulate", "4")["jobs"][0])
+        self.assertEqual({k for k in a if a[k] != b[k]}, {"train.finetune_scope", "hydra.run.dir", "test.output_path"})
+
+    def test_invalid_training_scope_or_accumulation_rejected(self):
+        for value in (0, -1):
+            with self.assertRaises(ValueError):
+                self.plan("train", "--accumulate", str(value))
+        self.cfg["train"]["finetune_scope"] = "invalid"
+        with self.assertRaises(ValueError):
+            self.plan("train")
+
     def test_finetune_and_matched_continuation(self):
         a = self.values(self.plan("train", "--prune", "--local", "--steps", "1000")["jobs"][0])
         b = self.values(self.plan("train", "--steps", "1000")["jobs"][0])
@@ -228,6 +254,7 @@ class HydraRunnerTests(unittest.TestCase):
         cfg["prior"].update(root="unused", teacher_id="teacher", teacher_settings_id="v1")
         variants = [("train", "--arm", a) for a in ("control", "legacy", "prior")]
         variants += [("eval-grid",), ("train", "--prune", "--local")]
+        variants += [("train", "--train-scope", "heads", "--accumulate", "4")]
         for args in variants:
             plan = runner.build_plan(cfg, runner.parser().parse_args(args))
             with self.subTest(args=args), initialize_config_dir(config_dir=str(ROOT / "config"), version_base=None):

@@ -87,8 +87,11 @@ checkpointing:
   save_weights_only: true
 
 train:
+  # full: legacy training; heads: freeze Transformer, train all output heads.
+  finetune_scope: full
   depth_mode: null
   extended_visualization: false
+  validation_videos: true
   print_log_every_n_steps: 10
   distiller: ''
   distill_max_steps: 1000000

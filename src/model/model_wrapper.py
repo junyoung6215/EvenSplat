@@ -77,6 +77,11 @@ from .local_cell_retention import (
     retention_distribution_statistics,
 )
 from .types import Gaussians
+from .training_scope import (
+    CHECKPOINT_SCOPE_KEY,
+    apply_training_scope,
+    validate_resume_scope,
+)
 
 
 @dataclass
@@ -116,6 +121,9 @@ class TrainCfg:
     print_log_every_n_steps: int
     distiller: str
     distill_max_steps: int
+    # Preserve legacy visualization unless a retention experiment opts out.
+    validation_videos: bool = True
+    finetune_scope: str = "full"
 
 
 @runtime_checkable
@@ -171,6 +179,7 @@ class ModelWrapper(LightningModule):
 
         # Set up the model.
         self.encoder = encoder
+        apply_training_scope(self.encoder, self.train_cfg.finetune_scope)
         self.encoder_visualizer = encoder_visualizer
         self.decoder = decoder
         self.data_shim = get_data_shim(self.encoder)
@@ -202,6 +211,28 @@ class ModelWrapper(LightningModule):
             raw_dump_max_locations=test_cfg.olp_raw_dump_max_locations,
             save_full_raw_maps=test_cfg.olp_raw_dump_full_maps,
         )
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        # Lightning switches back to train() after validation. Keep the frozen
+        # Transformer deterministic while geometry/Gaussian/reliability heads train.
+        if self.train_cfg.finetune_scope == "heads":
+            self.encoder.backbone.eval()
+        return self
+
+    def on_save_checkpoint(self, checkpoint: dict) -> None:
+        checkpoint[CHECKPOINT_SCOPE_KEY] = self.train_cfg.finetune_scope
+
+    def on_load_checkpoint(self, checkpoint: dict) -> None:
+        trainer = getattr(self, "_trainer", None)
+        fn = getattr(getattr(trainer, "state", None), "fn", None)
+        if getattr(fn, "value", fn) == "fit":
+            validate_resume_scope(checkpoint, self.train_cfg.finetune_scope)
+            if self.train_cfg.finetune_scope == "heads":
+                missing = [name for name, _ in self.encoder.backbone.named_parameters()
+                           if f"encoder.backbone.{name}" not in checkpoint.get("state_dict", {})]
+                if missing:
+                    raise ValueError(f"Frozen backbone weights missing from resume checkpoint: {missing[:5]}")
 
     def _geo_loss_enabled(self) -> bool:
         return any(
@@ -1344,14 +1375,22 @@ class ModelWrapper(LightningModule):
             ).items():
                 self.logger.log_image(k, [prep_image(image)], step=self.global_step)
 
-        # Run video validation step.
-        self.render_video_interpolation(batch)
-        self.render_video_wobble(batch)
+        self._render_validation_videos(batch, gaussians)
+
+    def _render_validation_videos(
+        self, batch: BatchedExample, gaussians: Gaussians
+    ) -> None:
+        if not self.train_cfg.validation_videos:
+            return
+        # Reuse the exact subset used for validation metrics, including random
+        # retention. Re-encoding or re-selecting here would change the result.
+        self.render_video_interpolation(batch, gaussians)
+        self.render_video_wobble(batch, gaussians)
         if self.train_cfg.extended_visualization:
-            self.render_video_interpolation_exaggerated(batch)
+            self.render_video_interpolation_exaggerated(batch, gaussians)
 
     @rank_zero_only
-    def render_video_wobble(self, batch: BatchedExample) -> None:
+    def render_video_wobble(self, batch: BatchedExample, gaussians: Gaussians) -> None:
         # Two views are needed to get the wobble radius.
         _, v, _, _ = batch["context"]["extrinsics"].shape
         if v != 2:
@@ -1373,10 +1412,10 @@ class ModelWrapper(LightningModule):
             )
             return extrinsics, intrinsics
 
-        return self.render_video_generic(batch, trajectory_fn, "wobble", num_frames=60)
+        return self.render_video_generic(batch, trajectory_fn, "wobble", gaussians, num_frames=60)
 
     @rank_zero_only
-    def render_video_interpolation(self, batch: BatchedExample) -> None:
+    def render_video_interpolation(self, batch: BatchedExample, gaussians: Gaussians) -> None:
         _, v, _, _ = batch["context"]["extrinsics"].shape
 
         def trajectory_fn(t):
@@ -1400,10 +1439,10 @@ class ModelWrapper(LightningModule):
             )
             return extrinsics[None], intrinsics[None]
 
-        return self.render_video_generic(batch, trajectory_fn, "rgb")
+        return self.render_video_generic(batch, trajectory_fn, "rgb", gaussians)
 
     @rank_zero_only
-    def render_video_interpolation_exaggerated(self, batch: BatchedExample) -> None:
+    def render_video_interpolation_exaggerated(self, batch: BatchedExample, gaussians: Gaussians) -> None:
         # Two views are needed to get the wobble radius.
         _, v, _, _ = batch["context"]["extrinsics"].shape
         if v != 2:
@@ -1443,6 +1482,7 @@ class ModelWrapper(LightningModule):
             batch,
             trajectory_fn,
             "interpolation_exagerrated",
+            gaussians,
             num_frames=300,
             smooth=False,
             loop_reverse=False,
@@ -1454,12 +1494,13 @@ class ModelWrapper(LightningModule):
         batch: BatchedExample,
         trajectory_fn: TrajectoryFn,
         name: str,
+        gaussians: Gaussians,
         num_frames: int = 30,
         smooth: bool = True,
         loop_reverse: bool = True,
     ) -> None:
-        # Render probabilistic estimate of scene.
-        gaussians = self.encoder(batch["context"], self.global_step)
+        # Caller supplies the already-selected validation Gaussians. Do not
+        # bypass retention by predicting another full-count scene here.
 
         t = torch.linspace(0, 1, num_frames, dtype=torch.float32, device=self.device)
         if smooth:
