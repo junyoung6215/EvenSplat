@@ -100,7 +100,7 @@ class RetentionRunnerTests(unittest.TestCase):
         self.assertEqual(len(p["jobs"]), 14)
         self.assertEqual(len({j["directory"] for j in p["jobs"]}), 14)
         self.assertEqual(p["split"], "validation")
-        self.assertIsNone(self.values(p["jobs"][0])["model.encoder.pretrained_weights"])
+        self.assertEqual(self.values(p["jobs"][0])["model.encoder.pretrained_weights"], "")
 
     def test_local_pairing_and_test_index(self):
         p = self.plan("eval-grid", "--scores", "reliability", "--ratios", ".5", "--local", "both", "--split", "test")

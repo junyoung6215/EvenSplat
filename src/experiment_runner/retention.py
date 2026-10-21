@@ -116,7 +116,8 @@ def build_plan(cfg, args):
         "dataset.re10k.roots": [local_path(cfg["data_root"]).as_posix()],
         "dataset.re10k.view_sampler.index_path": local_path(cfg["train_pairs"]).as_posix(),
         "dataset.re10k.view_sampler.evaluation_index_path": index.as_posix(),
-        "model.encoder.pretrained_weights": checkpoint.as_posix() if train else None,
+        # EncoderNoPoSplatCfg.pretrained_weights is a str; null fails typed config load.
+        "model.encoder.pretrained_weights": checkpoint.as_posix() if train else "",
         "checkpointing.load": None if train else checkpoint.as_posix(),
         "checkpointing.save_weights_only": False,
         "model.anchor_selection.enabled": False,
