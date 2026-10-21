@@ -23,6 +23,7 @@ class RetentionRunnerTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.cfg = runner.read_settings(runner.TEMPLATE)
         self.cfg.update(data_root=str(self.root), output_root=str(self.root / "runs"))
+        self.cfg["train"]["sampler"] = "fixed"  # most tests below cover the fixed-pair path
         for key in ("initial_checkpoint", "train_pairs", "validation_index", "evaluation_index"):
             self.cfg[key] = str(self.root / (key + ".json"))
         Path(self.cfg["initial_checkpoint"]).write_bytes(b"FAKE checkpoint: never loaded")
@@ -39,7 +40,7 @@ class RetentionRunnerTests(unittest.TestCase):
 
     def values(self, job):
         return {k: json.loads(v) for arg in job["argv"][5:] if "=" in arg
-                for k, v in [arg.split("=", 1)] if k != "loss"}
+                for k, v in [arg.split("=", 1)] if k != "loss" and "@" not in k}
 
     def test_train_resets_optimizer_and_saves_full_checkpoint(self):
         p = self.plan("train")
@@ -61,6 +62,24 @@ class RetentionRunnerTests(unittest.TestCase):
         prior = self.values(plans[2]["jobs"][0])
         self.assertEqual(prior["loss.reliability_prior.warmup_start"], 500)
 
+    def test_random_sampler_uses_bounded_pairs_without_manifest(self):
+        self.cfg["train"]["sampler"] = "random"
+        Path(self.cfg["train_pairs"]).unlink()
+        p = self.plan("train", "--prune")
+        argv, v = p["jobs"][0]["argv"], self.values(p["jobs"][0])
+        self.assertIn("dataset@dataset.re10k=re10k", argv)
+        self.assertNotIn("dataset.re10k.view_sampler.index_path", v)
+        self.assertEqual(v["dataset.re10k.view_sampler.warm_up_steps"], 0)
+        self.assertEqual(v["dataset.re10k.view_sampler.evaluation_index_path"],
+                         Path(self.cfg["validation_index"]).resolve().as_posix())
+        self.assertEqual(p["training"]["sampler"], "random")
+        runner.preflight(p)  # no train_pairs file needed
+        eval_argv = self.plan("eval-grid")["jobs"][0]["argv"]
+        self.assertNotIn("dataset@dataset.re10k=re10k", eval_argv)
+        self.cfg["prior"].update(root=str(self.root), teacher_id="real", teacher_settings_id="v1")
+        with self.assertRaises(ValueError):
+            self.plan("train", "--arm", "prior")
+
     def test_training_scope_defaults_and_cli_overrides(self):
         self.assertEqual(self.values(self.plan("train")["jobs"][0])["train.finetune_scope"], "full")
         self.cfg["train"]["finetune_scope"] = "heads"
@@ -69,7 +88,7 @@ class RetentionRunnerTests(unittest.TestCase):
         self.assertEqual(v["train.finetune_scope"], "heads")
         self.assertEqual(v["trainer.accumulate_grad_batches"], 4)
         self.assertEqual(p["training"], dict(finetune_scope="heads", accumulate=4,
-                                           effective_batch_size=4, optimizer_steps=2000))
+                                           effective_batch_size=4, optimizer_steps=2000, sampler="fixed"))
         self.assertEqual(self.cfg["train"]["accumulate"], 1)  # no settings mutation
         self.assertEqual(self.values(self.plan("train", "--train-scope", "full")["jobs"][0])["train.finetune_scope"], "full")
         self.assertIsNone(self.plan("eval-grid")["training"])
@@ -255,12 +274,17 @@ class HydraRunnerTests(unittest.TestCase):
         variants = [("train", "--arm", a) for a in ("control", "legacy", "prior")]
         variants += [("eval-grid",), ("train", "--prune", "--local")]
         variants += [("train", "--train-scope", "heads", "--accumulate", "4")]
-        for args in variants:
+        for sampler in ("fixed", "random"):
+          cfg["train"]["sampler"] = sampler
+          for args in variants:
+            if sampler == "random" and "prior" in args:
+                continue
             plan = runner.build_plan(cfg, runner.parser().parse_args(args))
             with self.subTest(args=args), initialize_config_dir(config_dir=str(ROOT / "config"), version_base=None):
                 composed = compose(config_name="main", overrides=plan["jobs"][0]["argv"][4:])
                 OmegaConf.to_container(composed, resolve=True, throw_on_missing=True)
-                self.assertEqual(composed.dataset.re10k.view_sampler.name, "fixed_pairs")
+                expected = "bounded" if sampler == "random" and args[0] == "train" else "fixed_pairs"
+                self.assertEqual(composed.dataset.re10k.view_sampler.name, expected)
                 if "legacy" in args:
                     self.assertEqual(set(composed.loss), {"mse", "lpips", "reliability"})
 

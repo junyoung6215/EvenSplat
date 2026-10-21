@@ -10,3 +10,6 @@ min_distance_to_context_views: 0
 warm_up_steps: 0
 initial_min_distance_between_context_views: 2
 initial_max_distance_between_context_views: 6
+
+# null keeps random val pairs; a path makes val/test use that fixed index.
+evaluation_index_path: null
