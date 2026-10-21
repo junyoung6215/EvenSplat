@@ -18,6 +18,9 @@ reliability_r_min: 0.05
 
 train:
   finetune_scope: full  # Set heads for frozen-backbone fine-tuning.
+  # random: original NoPoSplat bounded pairs over the whole train split (train_pairs unused).
+  # fixed: train_pairs manifest; required by the prior arm.
+  sampler: random
   steps: 5000
   batch_size: 1
   accumulate: 1

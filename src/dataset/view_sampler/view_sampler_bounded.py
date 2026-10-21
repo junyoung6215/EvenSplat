@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 import torch
@@ -19,6 +20,8 @@ class ViewSamplerBoundedCfg:
     warm_up_steps: int
     initial_min_distance_between_context_views: int
     initial_max_distance_between_context_views: int
+    # Optional: val/test stages read this fixed index instead of random pairs.
+    evaluation_index_path: Path | None = None
 
 
 class ViewSamplerBounded(ViewSampler[ViewSamplerBoundedCfg]):

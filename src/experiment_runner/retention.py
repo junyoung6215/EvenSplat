@@ -114,7 +114,6 @@ def build_plan(cfg, args):
         "mode": "train" if train else "test",
         "wandb.mode": "disabled", "seed": cfg["seed"],
         "dataset.re10k.roots": [local_path(cfg["data_root"]).as_posix()],
-        "dataset.re10k.view_sampler.index_path": local_path(cfg["train_pairs"]).as_posix(),
         "dataset.re10k.view_sampler.evaluation_index_path": index.as_posix(),
         # EncoderNoPoSplatCfg.pretrained_weights is a str; null fails typed config load.
         "model.encoder.pretrained_weights": checkpoint.as_posix() if train else "",
@@ -145,6 +144,18 @@ def build_plan(cfg, args):
         "data_loader.test.num_workers": t["workers"],
         "data_loader.test.persistent_workers": False,
     }
+    sampler = t.get("sampler", "fixed")
+    if sampler not in ("fixed", "random"):
+        raise ValueError("train.sampler must be fixed or random")
+    if train and arm == "prior" and sampler != "fixed":
+        raise ValueError("The prior arm needs train.sampler=fixed (cache is keyed by fixed pairs)")
+    if train and sampler == "random":
+        # Original NoPoSplat bounded random pairs over the whole train split.
+        # Warm-up 0: fine-tuning starts from a converged checkpoint, so use the
+        # final 45-90 context gap immediately instead of re-ramping from 25.
+        base["dataset.re10k.view_sampler.warm_up_steps"] = 0
+    else:
+        base["dataset.re10k.view_sampler.index_path"] = local_path(cfg["train_pairs"]).as_posix()
     if train:
         scope = args.train_scope if args.train_scope is not None else t["finetune_scope"]
         if scope not in ("full", "heads"):
@@ -215,6 +226,8 @@ def build_plan(cfg, args):
         })
         preset = "retention_prior" if train and arm == "prior" else "retention_control"
         argv = [sys.executable, "-u", "-m", "src.main", f"+experiment={preset}"]
+        if train and sampler == "random":
+            argv.append("dataset@dataset.re10k=re10k")
         if train and arm == "legacy":
             argv.append("loss=[mse,lpips,reliability]")
             # The inherited experiment still contains a disabled prior override;
@@ -225,7 +238,7 @@ def build_plan(cfg, args):
                      "score": score, "ratio": ratio, "local": local, "retention": enabled,
                      "status": "pending"})
     return {"schema_version": 1, "command": args.command, "arm": arm if train else None,
-            "training": ({"finetune_scope": scope, "accumulate": accumulate,
+            "training": ({"finetune_scope": scope, "accumulate": accumulate, "sampler": sampler,
                           "effective_batch_size": t["batch_size"] * accumulate,
                           "optimizer_steps": base["trainer.max_steps"]} if train else None),
             "split": "train" if train else args.split, "checkpoint": str(checkpoint),
@@ -268,7 +281,7 @@ def preflight(plan):
     test_scenes = {s for s, row in held_out.items() if row is not None}
     if validation_scenes & test_scenes:
         raise ValueError("Validation and held-out test scene IDs overlap")
-    if plan["command"] == "train":
+    if plan["command"] == "train" and plan["training"]["sampler"] == "fixed":
         from src.foundation.pairs import load_training_pairs
         pairs = load_training_pairs(local_path(cfg["train_pairs"]))
         if set(pairs) & (validation_scenes | test_scenes):
@@ -292,7 +305,7 @@ def execute(plan, run=subprocess.run):
     plan["index_sha256"] = file_hash(plan["index"])
     plan["validation_index_sha256"] = file_hash(local_path(plan["settings"]["validation_index"]))
     plan["evaluation_index_sha256"] = file_hash(local_path(plan["settings"]["evaluation_index"]))
-    if plan["command"] == "train":
+    if plan["command"] == "train" and plan["training"]["sampler"] == "fixed":
         plan["train_pairs_sha256"] = file_hash(local_path(plan["settings"]["train_pairs"]))
     try:
         plan["git_commit"] = subprocess.check_output(

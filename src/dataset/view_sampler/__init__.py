@@ -35,6 +35,9 @@ def get_view_sampler(
 ) -> ViewSampler[Any]:
     if isinstance(cfg, ViewSamplerFixedPairsCfg) and stage != "train":
         cfg = ViewSamplerEvaluationCfg("evaluation", cfg.evaluation_index_path, 2)
+    elif (isinstance(cfg, ViewSamplerBoundedCfg) and stage != "train"
+          and cfg.evaluation_index_path is not None):
+        cfg = ViewSamplerEvaluationCfg("evaluation", cfg.evaluation_index_path, 2)
     return VIEW_SAMPLERS[cfg.name](
         cfg,
         stage,
