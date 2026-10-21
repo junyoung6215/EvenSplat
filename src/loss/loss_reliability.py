@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
+from typing import Iterable
 
 import torch
 from jaxtyping import Float
@@ -25,6 +27,39 @@ class LossReliabilityCfgWrapper:
     reliability: LossReliabilityCfg
 
 
+def validate_reliability_loss_encoder(
+    encoder: object,
+    losses: Iterable[object],
+) -> None:
+    """Fail fast when an enabled reliability loss has no trainable head."""
+
+    loss_enabled = any(
+        getattr(loss_fn, "name", None) == "reliability"
+        and bool(getattr(getattr(loss_fn, "cfg", None), "enabled", False))
+        and float(getattr(getattr(loss_fn, "cfg", None), "weight", 0.0)) != 0.0
+        for loss_fn in losses
+    )
+    if not loss_enabled:
+        return
+
+    reliability_cfg = getattr(encoder, "gaussian_reliability_cfg", None)
+    if not bool(getattr(reliability_cfg, "enabled", False)):
+        raise ValueError(
+            "An enabled reliability loss requires "
+            "model.encoder.gaussian_reliability.enabled=true."
+        )
+    if bool(getattr(reliability_cfg, "detach_gate", False)):
+        warnings.warn(
+            "The current reliability auxiliary loss is one-sided: with "
+            "gaussian_reliability.detach_gate=true, it has no reconstruction "
+            "counter-gradient and may drive reliability gates toward r_min. "
+            "Use this setting only as a diagnostic ablation or with an "
+            "additional balancing objective.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+
 class LossReliability(Loss[LossReliabilityCfg, LossReliabilityCfgWrapper]):
     last_info: dict[str, Tensor | float] | None
 
@@ -41,6 +76,15 @@ class LossReliability(Loss[LossReliabilityCfg, LossReliabilityCfgWrapper]):
             return 1.0
         return min(max((global_step - start) / float(end - start), 0.0), 1.0)
 
+    def is_active(self, global_step: int) -> bool:
+        """Whether this step needs metadata and the extra context rendering."""
+
+        return (
+            bool(self.cfg.enabled)
+            and float(self.cfg.weight) != 0.0
+            and self._warmup_factor(global_step) > 0.0
+        )
+
     def forward(
         self,
         prediction: DecoderOutput,
@@ -51,7 +95,8 @@ class LossReliability(Loss[LossReliabilityCfg, LossReliabilityCfgWrapper]):
         del gaussians
         zero = prediction.color.new_zeros(())
         self.last_info = None
-        if not bool(self.cfg.enabled) or float(self.cfg.weight) == 0.0:
+        warmup = self._warmup_factor(global_step)
+        if not self.is_active(global_step):
             return zero
 
         metadata = batch.get("_reliability")
@@ -74,8 +119,8 @@ class LossReliability(Loss[LossReliabilityCfg, LossReliabilityCfgWrapper]):
             raise RuntimeError("reliability gate contains non-finite values.")
 
         valid_count = valid_mask.sum().clamp_min(1.0)
-        raw_loss = (reliability * opacity * residual_risk * valid_mask).sum() / valid_count
-        warmup = self._warmup_factor(global_step)
+        weighted_risk = reliability * opacity * residual_risk * valid_mask
+        raw_loss = weighted_risk.sum() / valid_count
         loss = raw_loss * float(self.cfg.weight) * warmup
 
         self.last_info = {
@@ -83,8 +128,14 @@ class LossReliability(Loss[LossReliabilityCfg, LossReliabilityCfgWrapper]):
             "weight": float(self.cfg.weight) * warmup,
             "warmup_factor": warmup,
             "valid_fraction": valid_mask.mean().detach(),
-            "risk_mean": (residual_risk * valid_mask).sum().detach() / valid_count.detach(),
-            "reliability_mean": (reliability.detach() * valid_mask).sum() / valid_count.detach(),
+            "risk_mean": (
+                (residual_risk * valid_mask).sum().detach()
+                / valid_count.detach()
+            ),
+            "reliability_mean": (
+                (reliability.detach() * valid_mask).sum()
+                / valid_count.detach()
+            ),
         }
         context_residual_mean = metadata.get("context_residual_mean")
         if isinstance(context_residual_mean, Tensor):

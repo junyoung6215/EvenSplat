@@ -13,3 +13,13 @@ cameras_are_circular: false
 baseline_min: 1e-3
 baseline_max: 1e10
 max_fov: 100.0
+
+# OFF preserves the original random-pair data path. Cache is training-only.
+foundation_prior:
+  enabled: false
+  source: cache
+  root: null
+  teacher_id: ''
+  teacher_settings_id: ''
+  preprocessing_id: noposplat-rescale-center-crop-rgb-v1
+  allow_mock: false

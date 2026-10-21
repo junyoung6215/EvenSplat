@@ -10,6 +10,8 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from _test_support import add_function_tests
+
 HEADS = ROOT / "src/model/encoder/heads"
 
 
@@ -30,28 +32,26 @@ def _load_module(name: str, path: Path):
     return module
 
 
-_ensure_package("src", ROOT / "src")
-_ensure_package("src.model", ROOT / "src/model")
-_ensure_package("src.model.encoder", ROOT / "src/model/encoder")
-_ensure_package("src.model.encoder.heads", HEADS)
+# Avoid replacing real src packages during collection of unrelated tests.
+_ensure_package("_olp_test_heads", HEADS)
 
 _load_module(
-    "src.model.encoder.heads.preconditioner_cfg",
+    "_olp_test_heads.preconditioner_cfg",
     HEADS / "preconditioner_cfg.py",
 )
 _load_module(
-    "src.model.encoder.heads.preconditioner_math",
+    "_olp_test_heads.preconditioner_math",
     HEADS / "preconditioner_math.py",
 )
 _load_module(
-    "src.model.encoder.heads.preconditioner_stats",
+    "_olp_test_heads.preconditioner_stats",
     HEADS / "preconditioner_stats.py",
 )
 preconditioner = _load_module(
-    "src.model.encoder.heads.latent_preconditioner",
+    "_olp_test_heads.latent_preconditioner",
     HEADS / "latent_preconditioner.py",
 )
-olp_stats = _load_module("olp_stats", ROOT / "src/analysis/olp_stats.py")
+olp_stats = _load_module("_olp_test_stats", ROOT / "src/analysis/olp_stats.py")
 
 gaussian_tail_stats = olp_stats.gaussian_tail_stats
 latent_tail_stats = olp_stats.latent_tail_stats
@@ -207,6 +207,10 @@ def test_stats_helpers_return_scalars():
     assert "floater_proxy" in gaussian
     assert "scale_tail_threshold" in gaussian
     assert all(isinstance(value, float) for value in gaussian.values())
+
+
+def load_tests(loader, suite, pattern):
+    return add_function_tests(suite, globals())
 
 
 if __name__ == "__main__":

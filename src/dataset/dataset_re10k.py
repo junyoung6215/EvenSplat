@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from io import BytesIO
 from pathlib import Path
@@ -20,6 +20,8 @@ from .shims.crop_shim import apply_crop_shim
 from .types import Stage
 from .view_sampler import ViewSampler
 from ..misc.cam_utils import camera_normalization
+from ..foundation.prior import FoundationPriorCfg, PriorProvider
+from .view_sampler.view_sampler_fixed_pairs import ViewSamplerFixedPairs
 
 
 @dataclass
@@ -33,6 +35,7 @@ class DatasetRE10kCfg(DatasetCfgCommon):
     augment: bool
     relative_pose: bool
     skip_bad_shape: bool
+    foundation_prior: FoundationPriorCfg = field(default_factory=FoundationPriorCfg)
 
 
 @dataclass
@@ -71,6 +74,9 @@ class DatasetRE10k(IterableDataset):
         self.stage = stage
         self.view_sampler = view_sampler
         self.to_tensor = tf.ToTensor()
+        self.fixed_pairs = isinstance(view_sampler, ViewSamplerFixedPairs)
+        self.prior_provider = PriorProvider(cfg.foundation_prior, stage,
+                                            augment=cfg.augment, fixed_pairs=self.fixed_pairs)
 
         # Collect chunks.
         self.chunks = []
@@ -83,6 +89,13 @@ class DatasetRE10k(IterableDataset):
         if self.cfg.overfit_to_scene is not None:
             chunk_path = self.index[self.cfg.overfit_to_scene]
             self.chunks = [chunk_path] * len(self.chunks)
+        if self.fixed_pairs:
+            if torch.distributed.is_initialized() and torch.distributed.get_world_size() != 1:
+                raise ValueError("Fixed-pair MVP supports one process/GPU only.")
+            missing = set(view_sampler.pairs) - self.index.keys()
+            if missing:
+                raise ValueError(f"Fixed training scenes missing from train index: {sorted(missing)[:5]}")
+            self.chunks = sorted({self.index[scene] for scene in view_sampler.pairs})
 
     def shuffle(self, lst: list) -> list:
         indices = torch.randperm(len(lst))
@@ -91,7 +104,7 @@ class DatasetRE10k(IterableDataset):
     def __iter__(self):
         # Chunks must be shuffled here (not inside __init__) for validation to show
         # random chunks.
-        if self.stage in ("train", "val"):
+        if self.stage in ("train", "val") and not self.fixed_pairs:
             self.chunks = self.shuffle(self.chunks)
 
         # When testing, the data loaders alternate chunks.
@@ -103,7 +116,18 @@ class DatasetRE10k(IterableDataset):
                 if chunk_index % worker_info.num_workers == worker_info.id
             ]
 
-        for chunk_path in self.chunks:
+        chunks = self.chunks
+        if self.fixed_pairs:
+            # Shard BEFORE worker-local random shuffling, without mutating the
+            # canonical chunk list (persistent workers repeat this each epoch).
+            if worker_info is not None:
+                chunks = chunks[worker_info.id::worker_info.num_workers]
+            chunks = self.shuffle(chunks)
+        chunk_set = set(chunks) if self.fixed_pairs else set()
+        expected_scenes = ({scene for scene in self.view_sampler.pairs
+                            if self.index[scene] in chunk_set} if self.fixed_pairs else set())
+        seen_scenes = set()
+        for chunk_path in chunks:
             # Load the chunk.
             chunk = torch.load(chunk_path)
 
@@ -116,6 +140,13 @@ class DatasetRE10k(IterableDataset):
                 chunk = self.shuffle(chunk)
 
             for example in chunk:
+                if self.fixed_pairs and example["key"] not in self.view_sampler.pairs:
+                    continue
+                if self.fixed_pairs:
+                    scene_key = example["key"]
+                    if scene_key in seen_scenes or self.index[scene_key] != chunk_path:
+                        raise ValueError(f"Fixed scene duplicated or indexed to a different chunk: {scene_key}")
+                    seen_scenes.add(scene_key)
                 extrinsics, intrinsics = self.convert_poses(example["cameras"])
                 scene = example["key"]
 
@@ -126,11 +157,15 @@ class DatasetRE10k(IterableDataset):
                         intrinsics,
                     )
                 except ValueError:
+                    if self.fixed_pairs:
+                        raise
                     # Skip because the example doesn't have enough frames.
                     continue
 
                 # Skip the example if the field of view is too wide.
                 if (get_fov(intrinsics).rad2deg() > self.cfg.max_fov).any():
+                    if self.fixed_pairs:
+                        raise ValueError(f"Fixed scene rejected by max_fov: {scene}")
                     continue
 
                 # Load the images.
@@ -144,8 +179,12 @@ class DatasetRE10k(IterableDataset):
                     ]
                     target_images = self.convert_images(target_images)
                 except IndexError:
+                    if self.fixed_pairs:
+                        raise
                     continue
                 except OSError:
+                    if self.fixed_pairs:
+                        raise
                     print(f"Skipped bad example {example['key']}.")  # DL3DV-Full have some bad images
                     continue
 
@@ -153,6 +192,8 @@ class DatasetRE10k(IterableDataset):
                 context_image_invalid = context_images.shape[1:] != (3, *self.cfg.original_image_shape)
                 target_image_invalid = target_images.shape[1:] != (3, *self.cfg.original_image_shape)
                 if self.cfg.skip_bad_shape and (context_image_invalid or target_image_invalid):
+                    if self.fixed_pairs:
+                        raise ValueError(f"Fixed scene has invalid image shape: {scene}")
                     print(
                         f"Skipped bad example {example['key']}. Context shape was "
                         f"{context_images.shape} and target shape was "
@@ -166,6 +207,8 @@ class DatasetRE10k(IterableDataset):
                     a, b = context_extrinsics[0, :3, 3], context_extrinsics[-1, :3, 3]
                     scale = (a - b).norm()
                     if scale < self.cfg.baseline_min or scale > self.cfg.baseline_max:
+                        if self.fixed_pairs:
+                            raise ValueError(f"Fixed scene baseline out of range: {scene}")
                         print(
                             f"Skipped {scene} because of baseline out of range: "
                             f"{scale:.6f}"
@@ -200,7 +243,10 @@ class DatasetRE10k(IterableDataset):
                 }
                 if self.stage == "train" and self.cfg.augment:
                     example = apply_augmentation_shim(example)
-                yield apply_crop_shim(example, tuple(self.cfg.input_image_shape))
+                example = apply_crop_shim(example, tuple(self.cfg.input_image_shape))
+                yield self.prior_provider.attach(example)
+        if self.fixed_pairs and seen_scenes != expected_scenes:
+            raise ValueError(f"Fixed scenes missing from chunk contents: {sorted(expected_scenes - seen_scenes)[:5]}")
 
     def convert_poses(
         self,

@@ -24,6 +24,7 @@ with install_import_hook(
     from src.config import load_typed_root_config
     from src.dataset.data_module import DataModule
     from src.global_cfg import set_cfg
+    from src.foundation.validation import validate_prior_pipeline
     from src.loss import get_losses
     from src.misc.LocalLogger import LocalLogger
     from src.misc.checkpoint_audit import load_encoder_pretrained_weights
@@ -32,6 +33,7 @@ with install_import_hook(
     from src.model.decoder import get_decoder
     from src.model.encoder import get_encoder
     from src.model.model_wrapper import ModelWrapper
+    from src.model.training_scope import validate_training_initialization, training_scope_report
 
 
 def cyan(text: str) -> str:
@@ -56,6 +58,11 @@ def jsonable(value):
 )
 def train(cfg_dict: DictConfig):
     cfg = load_typed_root_config(cfg_dict)
+    validate_prior_pipeline(cfg)
+    validate_training_initialization(
+        cfg.train.finetune_scope, cfg.mode,
+        cfg.model.encoder.pretrained_weights, cfg.checkpointing.load,
+    )
     set_cfg(cfg_dict)
 
     # Set up the output directory.
@@ -88,7 +95,7 @@ def train(cfg_dict: DictConfig):
         if wandb.run is not None:
             wandb.run.log_code("src")
     else:
-        logger = LocalLogger()
+        logger = LocalLogger(output_dir / "local")
 
     # Set up checkpointing.
     callbacks.append(
@@ -149,6 +156,7 @@ def train(cfg_dict: DictConfig):
             cfg.model.encoder.pretrained_weights,
             output_dir / "pretrained_load_audit.json",
             strict=False,
+            require_backbone=cfg.train.finetune_scope == "heads",
         )
 
     model_wrapper = ModelWrapper(
@@ -162,6 +170,7 @@ def train(cfg_dict: DictConfig):
         step_tracker,
         distiller=distiller,
         anchor_selection_cfg=cfg.model.anchor_selection,
+        gaussian_retention_cfg=cfg.model.gaussian_retention,
         debug_cfg=cfg.debug,
     )
     data_module = DataModule(
@@ -172,6 +181,16 @@ def train(cfg_dict: DictConfig):
     )
 
     if cfg.mode == "train":
+        if trainer.global_rank == 0:
+            scope_report = training_scope_report(encoder, cfg.train.finetune_scope)
+            (output_dir / "training_scope.json").write_text(
+                json.dumps(scope_report, indent=2) + "\n", encoding="utf-8"
+            )
+            print(cyan(
+                f"Training scope={cfg.train.finetune_scope}: "
+                f"{scope_report['trainable_parameters']:,} trainable / "
+                f"{scope_report['frozen_parameters']:,} frozen encoder parameters."
+            ))
         trainer.fit(model_wrapper, datamodule=data_module, ckpt_path=checkpoint_path)
     else:
         metrics = trainer.test(

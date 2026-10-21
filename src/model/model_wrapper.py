@@ -25,11 +25,14 @@ from ..geometry.projection import project
 from ..global_cfg import get_cfg
 from ..loss import Loss
 from ..loss.loss_point import Regr3D
+from ..loss.loss_reliability import validate_reliability_loss_encoder
+from ..loss.loss_reliability_prior import validate_prior_loss_encoder
+from .image_demand import image_detail_demand
 from ..loss.loss_ssim import ssim
 from ..misc.benchmarker import Benchmarker
 from ..misc.cam_utils import update_pose, get_pnp_pose
 from ..misc.image_io import prep_image, save_image, save_video
-from ..misc.LocalLogger import LOG_PATH, LocalLogger
+from ..misc.LocalLogger import LocalLogger
 from ..misc.nn_module_tools import convert_to_buffer
 from ..misc.step_tracker import StepTracker
 from ..misc.utils import inverse_normalize, vis_depth_map, confidence_map, get_overlap_tag
@@ -56,8 +59,29 @@ from ..visualization.layout import add_border, hcat, vcat
 from ..visualization.validation_in_3d import render_cameras, render_projections
 from .decoder.decoder import Decoder, DepthRenderingMode
 from .encoder import Encoder
-from .types import Gaussians
 from .encoder.visualization.encoder_visualizer import EncoderVisualizer
+from .gaussian_retention import (
+    GaussianRetention,
+    GaussianRetentionCfg,
+    GaussianRetentionResult,
+    deterministic_random_scores,
+    flatten_gaussian_scores,
+    retention_score_statistics,
+    retention_selection_mask,
+)
+from .local_cell_retention import (
+    GaussianGridLayout,
+    LocalCellAllocation,
+    LocalCellAllocator,
+    gaussian_cell_ids,
+    retention_distribution_statistics,
+)
+from .types import Gaussians
+from .training_scope import (
+    CHECKPOINT_SCOPE_KEY,
+    apply_training_scope,
+    validate_resume_scope,
+)
 
 
 @dataclass
@@ -97,6 +121,9 @@ class TrainCfg:
     print_log_every_n_steps: int
     distiller: str
     distill_max_steps: int
+    # Preserve legacy visualization unless a retention experiment opts out.
+    validation_videos: bool = True
+    finetune_scope: str = "full"
 
 
 @runtime_checkable
@@ -134,6 +161,7 @@ class ModelWrapper(LightningModule):
         step_tracker: StepTracker | None,
         distiller: Optional[nn.Module] = None,
         anchor_selection_cfg: AnchorSelectionCfg | None = None,
+        gaussian_retention_cfg: GaussianRetentionCfg | None = None,
         debug_cfg: Any | None = None,
     ) -> None:
         super().__init__()
@@ -141,16 +169,23 @@ class ModelWrapper(LightningModule):
         self.test_cfg = test_cfg
         self.train_cfg = train_cfg
         self.anchor_selection_cfg = anchor_selection_cfg or AnchorSelectionCfg()
+        self.gaussian_retention = GaussianRetention(gaussian_retention_cfg)
+        self.local_cell_allocator = LocalCellAllocator(
+            self.gaussian_retention.cfg.local_cells
+        )
         self.debug_cfg = debug_cfg
         self.step_tracker = step_tracker
         self._warned_anchor_inactive_stages: set[str] = set()
 
         # Set up the model.
         self.encoder = encoder
+        apply_training_scope(self.encoder, self.train_cfg.finetune_scope)
         self.encoder_visualizer = encoder_visualizer
         self.decoder = decoder
         self.data_shim = get_data_shim(self.encoder)
         self.losses = nn.ModuleList(losses)
+        validate_reliability_loss_encoder(self.encoder, self.losses)
+        validate_prior_loss_encoder(self.encoder, self.losses, self.anchor_selection_cfg)
         if any(
             bool(getattr(module, "reliability_enabled", False))
             for module in self.encoder.modules()
@@ -177,6 +212,28 @@ class ModelWrapper(LightningModule):
             save_full_raw_maps=test_cfg.olp_raw_dump_full_maps,
         )
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        # Lightning switches back to train() after validation. Keep the frozen
+        # Transformer deterministic while geometry/Gaussian/reliability heads train.
+        if self.train_cfg.finetune_scope == "heads":
+            self.encoder.backbone.eval()
+        return self
+
+    def on_save_checkpoint(self, checkpoint: dict) -> None:
+        checkpoint[CHECKPOINT_SCOPE_KEY] = self.train_cfg.finetune_scope
+
+    def on_load_checkpoint(self, checkpoint: dict) -> None:
+        trainer = getattr(self, "_trainer", None)
+        fn = getattr(getattr(trainer, "state", None), "fn", None)
+        if getattr(fn, "value", fn) == "fit":
+            validate_resume_scope(checkpoint, self.train_cfg.finetune_scope)
+            if self.train_cfg.finetune_scope == "heads":
+                missing = [name for name, _ in self.encoder.backbone.named_parameters()
+                           if f"encoder.backbone.{name}" not in checkpoint.get("state_dict", {})]
+                if missing:
+                    raise ValueError(f"Frozen backbone weights missing from resume checkpoint: {missing[:5]}")
+
     def _geo_loss_enabled(self) -> bool:
         return any(
             getattr(loss_fn, "name", None) == "geo"
@@ -185,13 +242,272 @@ class ModelWrapper(LightningModule):
             for loss_fn in self.losses
         )
 
-    def _reliability_loss_enabled(self) -> bool:
+    def _reliability_loss_active(self) -> bool:
+        global_step = int(self.global_step)
         return any(
             getattr(loss_fn, "name", None) == "reliability"
-            and bool(getattr(loss_fn, "cfg", None).enabled)
-            and float(getattr(loss_fn, "cfg", None).weight) != 0.0
+            and callable(getattr(loss_fn, "is_active", None))
+            and bool(loss_fn.is_active(global_step))
             for loss_fn in self.losses
         )
+
+    def _prior_loss_active(self) -> bool:
+        return any(loss.name == "reliability_prior" and loss.is_active(int(self.global_step))
+                   for loss in self.losses)
+
+    def _attach_reliability_prior(self, batch, visualization_dump) -> None:
+        if not self._prior_loss_active():
+            return
+        if visualization_dump is None or "reliability" not in visualization_dump:
+            raise RuntimeError("Prior loss requires dense encoder reliability gates.")
+        if self.anchor_selection_cfg.enabled:
+            raise ValueError("Prior maps require original source-view order.")
+        batch["_reliability_prior"] = {
+            "reliability": visualization_dump["reliability"],
+            "r_min": float(self.encoder.gaussian_reliability_cfg.r_min),
+        }
+
+    def _retention_applies(self, stage: str) -> bool:
+        if stage not in ("train", "eval"):
+            raise ValueError(f"Unsupported retention stage: {stage!r}.")
+        return self.gaussian_retention.applies(stage, int(self.global_step))
+
+    def _retention_requires_visualization_dump(self, stage: str) -> bool:
+        if not self._retention_applies(stage):
+            return False
+        needs_score_dump = self.gaussian_retention.cfg.score_source in (
+            "base_opacity",
+            "reliability",
+            "external",
+        )
+        return needs_score_dump or bool(self.local_cell_allocator.cfg.enabled)
+
+    @staticmethod
+    def _find_retention_tensor(
+        key: str,
+        batch: BatchedExample,
+        visualization_dump: dict | None,
+    ) -> Tensor | None:
+        context = batch.get("context", {})
+        value = context.get(key)
+        if isinstance(value, Tensor):
+            return value
+        foundation = batch.get("_foundation", {})
+        if isinstance(foundation, dict):
+            value = foundation.get(key)
+            if isinstance(value, Tensor):
+                return value
+        if visualization_dump is not None:
+            value = visualization_dump.get(key)
+            if isinstance(value, Tensor):
+                return value
+        return None
+
+    def _retention_scores(
+        self,
+        gaussians: Gaussians,
+        batch: BatchedExample,
+        visualization_dump: dict | None,
+        selection_id: int,
+    ) -> Tensor:
+        source = self.gaussian_retention.cfg.score_source
+        if source == "opacity":
+            return gaussians.opacities
+
+        if source == "random":
+            trainer = getattr(self, "_trainer", None)
+            world_size = max(int(getattr(trainer, "world_size", 1)), 1)
+            distributed_id = (
+                int(selection_id) * world_size
+                + int(self.global_rank)
+            )
+            return deterministic_random_scores(
+                gaussians.opacities,
+                seed=int(self.gaussian_retention.cfg.random_seed),
+                selection_id=distributed_id,
+            )
+
+        if visualization_dump is None and source != "external":
+            raise RuntimeError(
+                f"Gaussian retention score_source={source!r} requires an encoder "
+                "visualization dump, but none was created."
+            )
+        if source == "base_opacity":
+            key = "opacities_before_reliability"
+        elif source == "reliability":
+            reliability_cfg = getattr(
+                self.encoder,
+                "gaussian_reliability_cfg",
+                None,
+            )
+            if not bool(getattr(reliability_cfg, "enabled", False)):
+                raise RuntimeError(
+                    "Gaussian retention score_source='reliability' requires "
+                    "model.encoder.gaussian_reliability.enabled=true."
+                )
+            key = "reliability"
+        elif source == "external":
+            key = self.gaussian_retention.cfg.external_score_key
+        else:
+            raise RuntimeError(f"Unsupported retention score source: {source!r}.")
+
+        value = self._find_retention_tensor(key, batch, visualization_dump)
+        if not isinstance(value, Tensor):
+            raise RuntimeError(
+                f"Gaussian retention requires a Tensor named {key!r} in the "
+                "context batch, foundation metadata, or encoder visualization "
+                f"dump for score_source={source!r}."
+            )
+        scores = flatten_gaussian_scores(
+            value,
+            expected_batch=int(gaussians.opacities.shape[0]),
+            expected_gaussians=int(gaussians.opacities.shape[1]),
+            name=key,
+        )
+        return scores.to(
+            device=gaussians.opacities.device,
+            dtype=gaussians.opacities.dtype,
+        )
+
+    def _retention_grid_layout(
+        self,
+        gaussians: Gaussians,
+        batch: BatchedExample,
+    ) -> GaussianGridLayout:
+        context_image = batch.get("context", {}).get("image")
+        if not isinstance(context_image, Tensor) or context_image.ndim != 5:
+            raise RuntimeError(
+                "Local-cell retention requires context images with shape [B,V,C,H,W]."
+            )
+        batch_size, views, _, height, width = context_image.shape
+        if int(batch_size) != int(gaussians.opacities.shape[0]):
+            raise RuntimeError("Context and Gaussian batch sizes do not match.")
+        surfaces = int(getattr(getattr(self.encoder, "cfg", None), "num_surfaces", 1))
+        base_count = int(views) * int(height) * int(width) * surfaces
+        gaussian_count = int(gaussians.opacities.shape[1])
+        if base_count <= 0 or gaussian_count % base_count != 0:
+            raise RuntimeError(
+                "Cannot align flattened Gaussians with the source image grid: "
+                f"G={gaussian_count}, VHW*surfaces={base_count}."
+            )
+        return GaussianGridLayout(
+            views=int(views),
+            height=int(height),
+            width=int(width),
+            surfaces=surfaces,
+            samples_per_surface=gaussian_count // base_count,
+        )
+
+    def _apply_local_cell_allocation(
+        self,
+        scores: Tensor,
+        gaussians: Gaussians,
+        batch: BatchedExample,
+        visualization_dump: dict | None,
+    ) -> tuple[Tensor, LocalCellAllocation | None, GaussianGridLayout]:
+        layout = self._retention_grid_layout(gaussians, batch)
+        cfg = self.local_cell_allocator.cfg
+        if not bool(cfg.enabled):
+            return scores, None, layout
+        if cfg.demand_source == "image_detail":
+            demand = image_detail_demand(
+                self._denormalize_context_image(batch["context"]["image"]),
+                strength=cfg.detail_strength)
+        elif cfg.demand_source == "external":
+            demand = self._find_retention_tensor(cfg.demand_key, batch, visualization_dump)
+        else:
+            raise ValueError(f"Unknown local demand source: {cfg.demand_source!r}")
+        if not isinstance(demand, Tensor):
+            raise RuntimeError(
+                f"Local-cell retention requires Tensor {cfg.demand_key!r} in the "
+                "context batch, foundation metadata, or visualization dump."
+            )
+        allocation = self.local_cell_allocator(scores, demand, layout)
+        return allocation.scores, allocation, layout
+
+    def _log_retention_statistics(
+        self,
+        stage: str,
+        scores: Tensor,
+        result: GaussianRetentionResult,
+        layout: GaussianGridLayout,
+        allocation: LocalCellAllocation | None,
+    ) -> None:
+        prefix = "train" if stage == "train" else "eval"
+        self.log(
+            f"{prefix}/retention_input_count",
+            float(result.input_count),
+            prog_bar=False,
+        )
+        self.log(
+            f"{prefix}/retention_output_count",
+            float(result.output_count),
+            prog_bar=False,
+        )
+        self.log(
+            f"{prefix}/retention_kept_fraction",
+            float(result.kept_fraction),
+            prog_bar=False,
+        )
+        cfg = self.gaussian_retention.cfg
+        diagnostics_due = stage != "train" or (
+            int(self.global_step) % int(cfg.diagnostics_every_n_steps) == 0
+        )
+        if not bool(cfg.log_diagnostics) or not diagnostics_due:
+            return
+        for name, value in retention_score_statistics(scores, result.indices).items():
+            self.log(f"{prefix}/retention_{name}", value, prog_bar=False)
+        mask = retention_selection_mask(scores, result.indices)
+        cell_ids = (
+            allocation.cell_ids
+            if allocation is not None
+            else gaussian_cell_ids(
+                layout,
+                int(self.local_cell_allocator.cfg.cell_size),
+                scores.device,
+            )
+        )
+        distribution = retention_distribution_statistics(mask, layout, cell_ids)
+        for name, value in distribution.items():
+            self.log(f"{prefix}/retention_{name}", value, prog_bar=False)
+
+    def _apply_gaussian_retention(
+        self,
+        gaussians: Gaussians,
+        batch: BatchedExample,
+        visualization_dump: dict | None,
+        stage: str,
+        selection_id: int,
+    ) -> GaussianRetentionResult:
+        if not self._retention_applies(stage):
+            return self.gaussian_retention.identity(gaussians)
+
+        scores = self._retention_scores(
+            gaussians,
+            batch,
+            visualization_dump,
+            selection_id,
+        )
+        scores, allocation, layout = self._apply_local_cell_allocation(
+            scores,
+            gaussians,
+            batch,
+            visualization_dump,
+        )
+        required_mask = None if allocation is None else allocation.required_mask
+        result = self.gaussian_retention(
+            gaussians,
+            scores,
+            required_mask=required_mask,
+        )
+        self._log_retention_statistics(
+            stage,
+            scores,
+            result,
+            layout,
+            allocation,
+        )
+        return result
 
     def _denormalize_context_image(self, image: Tensor) -> Tensor:
         cfg = getattr(self.encoder, "cfg", None)
@@ -237,7 +553,7 @@ class ModelWrapper(LightningModule):
         gaussians,
         visualization_dump: dict | None,
     ) -> None:
-        if not self._reliability_loss_enabled():
+        if not self._reliability_loss_active():
             return
         if visualization_dump is None:
             raise RuntimeError(
@@ -522,14 +838,29 @@ class ModelWrapper(LightningModule):
         if (
             self.distiller is not None
             or self._geo_loss_enabled()
-            or self._reliability_loss_enabled()
+            or self._reliability_loss_active()
+            or self._prior_loss_active()
+            or self._retention_requires_visualization_dump("train")
         ):
             visualization_dump = {}
-        gaussians = self.encoder(batch["context"], self.global_step, visualization_dump=visualization_dump)
+        gaussians = self.encoder(
+            batch["context"],
+            self.global_step,
+            visualization_dump=visualization_dump,
+        )
         self._attach_geo_intermediates(batch, visualization_dump)
         self._attach_reliability_intermediates(batch, gaussians, visualization_dump)
-        output = self.decoder.forward(
+        self._attach_reliability_prior(batch, visualization_dump)
+        retention = self._apply_gaussian_retention(
             gaussians,
+            batch,
+            visualization_dump,
+            "train",
+            int(self.global_step),
+        )
+        render_gaussians = retention.gaussians
+        output = self.decoder.forward(
+            render_gaussians,
             batch["target"]["extrinsics"],
             batch["target"]["intrinsics"],
             batch["target"]["near"],
@@ -549,16 +880,21 @@ class ModelWrapper(LightningModule):
         # Compute and log loss.
         total_loss = 0
         for loss_fn in self.losses:
-            loss = loss_fn.forward(output, batch, gaussians, self.global_step)
+            loss = loss_fn.forward(
+                output,
+                batch,
+                render_gaussians,
+                self.global_step,
+            )
             self.log(f"loss/{loss_fn.name}", loss)
             if loss_fn.name == "geo" and getattr(loss_fn, "last_info", None):
                 valid_ratio = loss_fn.last_info.get("valid_ratio")
                 if isinstance(valid_ratio, Tensor):
                     self.log("geo/valid_ratio", valid_ratio)
                 self._maybe_save_geo_debug(loss_fn, batch_idx)
-            if loss_fn.name == "reliability" and getattr(loss_fn, "last_info", None):
+            if loss_fn.name in ("reliability", "reliability_prior") and getattr(loss_fn, "last_info", None):
                 for key, value in loss_fn.last_info.items():
-                    self.log(f"reliability/{key}", value)
+                    self.log(f"{loss_fn.name}/{key}", value)
             total_loss = total_loss + loss
 
         preconditioner_stats = self.olp_eval_recorder.collect_preconditioner_stats(
@@ -740,13 +1076,26 @@ class ModelWrapper(LightningModule):
             print(f"Test step {batch_idx:0>6}.")
 
         # Render Gaussians.
-        visualization_dump = {} if self.test_cfg.save_olp_stats else None
+        visualization_dump = (
+            {}
+            if self.test_cfg.save_olp_stats
+            or self._retention_requires_visualization_dump("eval")
+            else None
+        )
         with self.benchmarker.time("encoder"):
-            gaussians = self.encoder(
+            full_gaussians = self.encoder(
                 batch["context"],
                 self.global_step,
                 visualization_dump=visualization_dump,
             )
+        retention = self._apply_gaussian_retention(
+            full_gaussians,
+            batch,
+            visualization_dump,
+            "eval",
+            int(batch_idx),
+        )
+        gaussians = retention.gaussians
 
         # align the target pose
         if self.test_cfg.align_pose:
@@ -787,7 +1136,7 @@ class ModelWrapper(LightningModule):
         path = self.test_cfg.output_path / name
         if self.test_cfg.compute_scores:
             self._record_gaussian_cap_curve(
-                batch, gaussians, scene, batch_idx, overlap_tag
+                batch, full_gaussians, scene, batch_idx, overlap_tag
             )
 
         if self.test_cfg.save_olp_stats and visualization_dump is not None:
@@ -870,7 +1219,7 @@ class ModelWrapper(LightningModule):
                     # Compute and log loss.
                     total_loss = 0
                     for loss_fn in self.losses:
-                        if loss_fn.name == "geo":
+                        if loss_fn.name in ("geo", "reliability_prior"):
                             continue
                         loss = loss_fn.forward(output, batch, gaussians, self.global_step)
                         total_loss = total_loss + loss
@@ -932,6 +1281,14 @@ class ModelWrapper(LightningModule):
             self.global_step,
             visualization_dump=visualization_dump,
         )
+        retention = self._apply_gaussian_retention(
+            gaussians,
+            batch,
+            visualization_dump,
+            "eval",
+            int(batch_idx),
+        )
+        gaussians = retention.gaussians
         output = self.decoder.forward(
             gaussians,
             batch["target"]["extrinsics"],
@@ -1018,14 +1375,22 @@ class ModelWrapper(LightningModule):
             ).items():
                 self.logger.log_image(k, [prep_image(image)], step=self.global_step)
 
-        # Run video validation step.
-        self.render_video_interpolation(batch)
-        self.render_video_wobble(batch)
+        self._render_validation_videos(batch, gaussians)
+
+    def _render_validation_videos(
+        self, batch: BatchedExample, gaussians: Gaussians
+    ) -> None:
+        if not self.train_cfg.validation_videos:
+            return
+        # Reuse the exact subset used for validation metrics, including random
+        # retention. Re-encoding or re-selecting here would change the result.
+        self.render_video_interpolation(batch, gaussians)
+        self.render_video_wobble(batch, gaussians)
         if self.train_cfg.extended_visualization:
-            self.render_video_interpolation_exaggerated(batch)
+            self.render_video_interpolation_exaggerated(batch, gaussians)
 
     @rank_zero_only
-    def render_video_wobble(self, batch: BatchedExample) -> None:
+    def render_video_wobble(self, batch: BatchedExample, gaussians: Gaussians) -> None:
         # Two views are needed to get the wobble radius.
         _, v, _, _ = batch["context"]["extrinsics"].shape
         if v != 2:
@@ -1047,10 +1412,10 @@ class ModelWrapper(LightningModule):
             )
             return extrinsics, intrinsics
 
-        return self.render_video_generic(batch, trajectory_fn, "wobble", num_frames=60)
+        return self.render_video_generic(batch, trajectory_fn, "wobble", gaussians, num_frames=60)
 
     @rank_zero_only
-    def render_video_interpolation(self, batch: BatchedExample) -> None:
+    def render_video_interpolation(self, batch: BatchedExample, gaussians: Gaussians) -> None:
         _, v, _, _ = batch["context"]["extrinsics"].shape
 
         def trajectory_fn(t):
@@ -1074,10 +1439,10 @@ class ModelWrapper(LightningModule):
             )
             return extrinsics[None], intrinsics[None]
 
-        return self.render_video_generic(batch, trajectory_fn, "rgb")
+        return self.render_video_generic(batch, trajectory_fn, "rgb", gaussians)
 
     @rank_zero_only
-    def render_video_interpolation_exaggerated(self, batch: BatchedExample) -> None:
+    def render_video_interpolation_exaggerated(self, batch: BatchedExample, gaussians: Gaussians) -> None:
         # Two views are needed to get the wobble radius.
         _, v, _, _ = batch["context"]["extrinsics"].shape
         if v != 2:
@@ -1117,6 +1482,7 @@ class ModelWrapper(LightningModule):
             batch,
             trajectory_fn,
             "interpolation_exagerrated",
+            gaussians,
             num_frames=300,
             smooth=False,
             loop_reverse=False,
@@ -1128,12 +1494,13 @@ class ModelWrapper(LightningModule):
         batch: BatchedExample,
         trajectory_fn: TrajectoryFn,
         name: str,
+        gaussians: Gaussians,
         num_frames: int = 30,
         smooth: bool = True,
         loop_reverse: bool = True,
     ) -> None:
-        # Render probabilistic estimate of scene.
-        gaussians = self.encoder(batch["context"], self.global_step)
+        # Caller supplies the already-selected validation Gaussians. Do not
+        # bypass retention by predicting another full-count scene here.
 
         t = torch.linspace(0, 1, num_frames, dtype=torch.float32, device=self.device)
         if smooth:
@@ -1170,7 +1537,7 @@ class ModelWrapper(LightningModule):
             for key, value in visualizations.items():
                 tensor = value._prepare_video(value.data)
                 clip = mpy.ImageSequenceClip(list(tensor), fps=20)
-                dir = LOG_PATH / key
+                dir = self.logger.output_dir / key
                 dir.mkdir(exist_ok=True, parents=True)
                 clip.write_videofile(
                     str(dir / f"{self.global_step:0>6}.mp4"), logger=None

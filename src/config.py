@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Optional, Type, TypeVar
 
@@ -10,6 +10,7 @@ from .dataset.data_module import DataLoaderCfg
 from .loss import LossCfgWrapper
 from .model.decoder import DecoderCfg
 from .model.encoder import EncoderCfg
+from .model.gaussian_retention import GaussianRetentionCfg
 from .model.model_wrapper import OptimizerCfg, TestCfg, TrainCfg
 from .utils.anchor_selection import AnchorSelectionCfg
 
@@ -27,6 +28,9 @@ class ModelCfg:
     decoder: DecoderCfg
     encoder: EncoderCfg
     anchor_selection: AnchorSelectionCfg
+    gaussian_retention: GaussianRetentionCfg = field(
+        default_factory=GaussianRetentionCfg
+    )
 
 
 @dataclass

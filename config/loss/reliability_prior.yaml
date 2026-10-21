@@ -1,0 +1,7 @@
+# Independent from the legacy residual loss. Hyperparameters are pilot values.
+reliability_prior:
+  enabled: false
+  weight: 0.001
+  warmup_start: 500
+  warmup_end: 1500
+  allow_mock: false
