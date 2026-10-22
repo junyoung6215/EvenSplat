@@ -21,6 +21,8 @@ class LocalCellRetentionCfg:
     # Keep the same fraction of every cell (ranked by score inside the cell)
     # instead of letting all cells compete for one global budget.
     stratified: bool = False
+    # Fold dropped Gaussians into the nearest kept one of the same cell.
+    merge: bool = False
 
 
 @dataclass(frozen=True)

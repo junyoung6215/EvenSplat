@@ -66,6 +66,7 @@ from .gaussian_retention import (
     GaussianRetentionResult,
     deterministic_random_scores,
     flatten_gaussian_scores,
+    merge_into_kept,
     retention_score_statistics,
     retention_selection_mask,
 )
@@ -503,6 +504,18 @@ class ModelWrapper(LightningModule):
             scores,
             required_mask=required_mask,
         )
+        if (
+            allocation is not None
+            and bool(self.local_cell_allocator.cfg.merge)
+            and result.indices is not None
+        ):
+            result = GaussianRetentionResult(
+                gaussians=merge_into_kept(gaussians, result.indices, allocation.cell_ids),
+                indices=result.indices,
+                input_count=result.input_count,
+                output_count=result.output_count,
+                applied=result.applied,
+            )
         self._log_retention_statistics(
             stage,
             scores,

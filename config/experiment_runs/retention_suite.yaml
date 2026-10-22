@@ -44,6 +44,8 @@ local:
   demand_source: image_detail
   # true: keep the budget ratio inside every cell instead of one global top-k.
   stratified: false
+  # true: merge dropped Gaussians into kept ones (opacity-weighted moments).
+  merge: false
 
 evaluation:
   scores: [random, base_opacity, opacity, reliability]

@@ -106,8 +106,9 @@ def build_plan(cfg, args):
         raise ValueError("local.min_per_cell must be 0 or 1")
     if cfg["local"]["demand_source"] not in ("image_detail", "uniform"):
         raise ValueError("local.demand_source must be image_detail or uniform")
-    if type(cfg["local"]["stratified"]) is not bool:
-        raise ValueError("local.stratified must be a YAML boolean")
+    for key in ("stratified", "merge"):
+        if type(cfg["local"][key]) is not bool:
+            raise ValueError(f"local.{key} must be a YAML boolean")
     for key in ("steps", "batch_size", "accumulate", "validation_interval", "checkpoint_interval"):
         positive_int(t[key], f"train.{key}")
     if type(t["workers"]) is not int or t["workers"] < 0:
@@ -143,6 +144,7 @@ def build_plan(cfg, args):
         "model.gaussian_retention.diagnostics_every_n_steps": 1,
         "model.gaussian_retention.local_cells.demand_source": cfg["local"]["demand_source"],
         "model.gaussian_retention.local_cells.stratified": cfg["local"]["stratified"],
+        "model.gaussian_retention.local_cells.merge": cfg["local"]["merge"],
         "model.gaussian_retention.local_cells.cell_size": cfg["local"]["cell_size"],
         "model.gaussian_retention.local_cells.detail_strength": cfg["local"]["detail_strength"],
         "model.gaussian_retention.local_cells.min_per_cell": cfg["local"]["min_per_cell"],

@@ -41,7 +41,7 @@ class TestImportIsolation(unittest.TestCase):
                 self.assertIs(sys.modules.get(name), value)
 
     def test_unittest_collects_existing_function_tests(self):
-        for name, count in (("test_gaussian_retention", 15), ("test_local_cell_retention", 12),
+        for name, count in (("test_gaussian_retention", 16), ("test_local_cell_retention", 12),
                             ("test_olp_preconditioner", 11)):
             module = importlib.import_module(name)
             self.assertEqual(unittest.defaultTestLoader.loadTestsFromModule(module).countTestCases(), count)

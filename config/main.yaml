@@ -55,6 +55,8 @@ model:
       min_per_cell: 0
       # true: keep keep_ratio of every cell (score ranks only inside a cell).
       stratified: false
+      # true: fold dropped Gaussians into the nearest kept one of their cell.
+      merge: false
 
 #dataset:
 #  overfit_to_scene: null

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor, nn
 
 from .local_cell_retention import LocalCellRetentionCfg
@@ -193,6 +194,75 @@ def gather_gaussians(gaussians: Gaussians, indices: Tensor) -> Gaussians:
         covariances=gather(gaussians.covariances),
         harmonics=gather(gaussians.harmonics),
         opacities=gather(gaussians.opacities),
+    )
+
+
+def merge_into_kept(
+    gaussians: Gaussians,
+    indices: Tensor,
+    cell_ids: Tensor,
+) -> Gaussians:
+    """Fold every dropped Gaussian into the nearest kept Gaussian of its cell.
+
+    Kept Gaussians become opacity-weighted moment matches of their group, so
+    pruning removes primitives without leaving uncovered gaps. Cells must have
+    equal size. Returns the merged Gaussians at ``indices``.
+    """
+
+    batch, count = _validate_gaussians(gaussians)
+    sizes = torch.bincount(cell_ids)
+    size = int(sizes[0].item())
+    if bool((sizes != size).any()):
+        raise ValueError("Gaussian merging requires equally sized cells.")
+    cells = count // size
+    order = torch.argsort(cell_ids, stable=True)
+
+    def grouped(field: Tensor) -> Tensor:
+        return field.index_select(1, order).reshape(
+            batch, cells, size, *field.shape[2:]
+        )
+
+    kept = grouped(retention_selection_mask(gaussians.opacities, indices))
+    means = grouped(gaussians.means)
+    covariances = grouped(gaussians.covariances)
+    harmonics = grouped(gaussians.harmonics)
+    opacities = grouped(gaussians.opacities)
+
+    # assign[b, c, i, j]: member i is absorbed by kept member j (kept -> itself).
+    distance = (means[..., :, None, :] - means[..., None, :, :]).square().sum(-1)
+    distance = distance.detach().masked_fill(~kept[..., None, :], torch.inf)
+    nearest = distance.argmin(-1)
+    has_target = torch.isfinite(distance.amin(-1))
+    assign = F.one_hot(nearest, size).to(opacities.dtype)
+    assign = assign * has_target[..., None].to(opacities.dtype)
+
+    weights = assign * (opacities[..., :, None] + 1e-6)
+    total = weights.sum(-2).clamp_min(1e-12)
+    merged_means = torch.einsum("bcij,bcix->bcjx", weights, means) / total[..., None]
+    offset = means[..., :, None, :] - merged_means[..., None, :, :]
+    spread = covariances[..., :, None, :, :] + offset[..., :, None] * offset[..., None, :]
+    merged_covariances = (
+        torch.einsum("bcij,bcijxy->bcjxy", weights, spread) / total[..., None, None]
+    )
+    merged_harmonics = (
+        torch.einsum("bcij,bcixd->bcjxd", weights, harmonics) / total[..., None, None]
+    )
+    transmittance = torch.log1p(-opacities.clamp(max=1.0 - 1e-6))
+    merged_opacities = 1.0 - torch.exp(torch.einsum("bcij,bci->bcj", assign, transmittance))
+
+    inverse = torch.argsort(order)
+
+    def flat(field: Tensor) -> Tensor:
+        return field.reshape(batch, count, *field.shape[3:]).index_select(1, inverse)
+
+    return gather_gaussians(
+        Gaussians(
+            means=flat(merged_means),
+            covariances=flat(merged_covariances),
+            harmonics=flat(merged_harmonics),
+            opacities=flat(merged_opacities),
+        ),
+        indices,
     )
 
 

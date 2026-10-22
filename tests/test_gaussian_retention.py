@@ -17,6 +17,7 @@ with annotation_only_jaxtyping():
         deterministic_random_scores,
         flatten_gaussian_scores,
         gather_gaussians,
+        merge_into_kept,
     )
     from src.model.types import Gaussians
 
@@ -258,6 +259,29 @@ def test_fixed_count_requires_an_explicit_budget() -> None:
         raise AssertionError("Expected fixed_count without keep_count to fail.")
 
 
+def test_merge_folds_dropped_gaussians_into_nearest_kept_of_cell() -> None:
+    # Two cells of two: [0, 1] and [2, 3]; keep 0 and 3.
+    means = torch.tensor([[[0.0, 0, 0], [2.0, 0, 0], [10.0, 0, 0], [12.0, 0, 0]]])
+    opacities = torch.tensor([[0.5, 0.5, 0.2, 0.6]], requires_grad=True)
+    gaussians = Gaussians(
+        means=means,
+        covariances=torch.eye(3).expand(1, 4, 3, 3).clone(),
+        harmonics=torch.arange(4.0).reshape(1, 4, 1, 1).expand(1, 4, 3, 1).clone(),
+        opacities=opacities,
+    )
+    merged = merge_into_kept(
+        gaussians, torch.tensor([[0, 3]]), torch.tensor([0, 0, 1, 1])
+    )
+    torch.testing.assert_close(merged.means[0, :, 0], torch.tensor([1.0, 11.5]), atol=1e-4, rtol=0)
+    # Unit covariance plus the spread of the merged centers along x.
+    torch.testing.assert_close(merged.covariances[0, 0, 0, 0], torch.tensor(2.0), atol=1e-4, rtol=0)
+    torch.testing.assert_close(merged.covariances[0, 0, 1, 1], torch.tensor(1.0), atol=1e-4, rtol=0)
+    torch.testing.assert_close(merged.harmonics[0, :, 0, 0], torch.tensor([0.5, 2.75]), atol=1e-4, rtol=0)
+    torch.testing.assert_close(merged.opacities, torch.tensor([[0.75, 0.68]]), atol=1e-4, rtol=0)
+    merged.opacities.sum().backward()
+    assert bool((opacities.grad != 0).all())
+
+
 def load_tests(loader, suite, pattern):
     return add_function_tests(suite, globals())
 
@@ -278,3 +302,4 @@ if __name__ == "__main__":
     test_elastic_threshold_rejects_variable_length_batch()
     test_non_finite_scores_fail_fast()
     test_fixed_count_requires_an_explicit_budget()
+    test_merge_folds_dropped_gaussians_into_nearest_kept_of_cell()
