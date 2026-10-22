@@ -413,6 +413,9 @@ class ModelWrapper(LightningModule):
             demand = image_detail_demand(
                 self._denormalize_context_image(batch["context"]["image"]),
                 strength=cfg.detail_strength)
+        elif cfg.demand_source == "uniform":
+            image = batch["context"]["image"]
+            demand = image.new_ones(image.shape[0], image.shape[1], *image.shape[-2:])
         elif cfg.demand_source == "external":
             demand = self._find_retention_tensor(cfg.demand_key, batch, visualization_dump)
         else:

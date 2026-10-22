@@ -220,6 +220,36 @@ def test_pruned_candidates_still_receive_prior_gradients() -> None:
     assert torch.all(reliability.grad.reshape(1, 32)[~mask] > 0)
 
 
+def test_stratified_cells_keep_the_same_share_of_every_cell() -> None:
+    layout = GaussianGridLayout(views=1, height=2, width=4, surfaces=1, samples_per_surface=1)
+    # Cell 0 (columns 0-1) holds every high score; global top-4 would empty cell 1.
+    scores = torch.tensor([[9.0, 8.0, 1.0, 0.4, 7.0, 6.0, 0.3, 0.2]])
+    allocator = LocalCellAllocator(
+        LocalCellRetentionCfg(enabled=True, cell_size=2, stratified=True)
+    )
+    allocation = allocator(scores, torch.ones(1, 1, 2, 4), layout)
+    selector = GaussianRetention(
+        GaussianRetentionCfg(enabled=True, mode="fixed_count", keep_count=4)
+    )
+    result = selector(make_gaussians(8), allocation.scores)
+    torch.testing.assert_close(result.indices, torch.tensor([[0, 1, 2, 3]]))
+
+
+def test_stratified_cells_break_partial_levels_by_score() -> None:
+    layout = GaussianGridLayout(views=1, height=1, width=4, surfaces=1, samples_per_surface=1)
+    scores = torch.tensor([[0.1, 0.2, 0.9, 0.8], [0.5, 0.6, 0.1, 0.2]])
+    allocator = LocalCellAllocator(
+        LocalCellRetentionCfg(enabled=True, cell_size=2, stratified=True)
+    )
+    allocation = allocator(scores, torch.ones(2, 1, 1, 4), layout)
+    selector = GaussianRetention(
+        GaussianRetentionCfg(enabled=True, mode="fixed_count", keep_count=3)
+    )
+    result = selector(make_gaussians(4, batch=2), allocation.scores)
+    # Best of each cell first, then the best runner-up across cells.
+    torch.testing.assert_close(result.indices, torch.tensor([[1, 2, 3], [0, 1, 3]]))
+
+
 def load_tests(loader, suite, pattern):
     return add_function_tests(suite, globals())
 
@@ -235,3 +265,5 @@ if __name__ == "__main__":
     test_minimum_cell_coverage_supports_batched_fixed_budgets()
     test_distribution_statistics_detect_empty_cells()
     test_pruned_candidates_still_receive_prior_gradients()
+    test_stratified_cells_keep_the_same_share_of_every_cell()
+    test_stratified_cells_break_partial_levels_by_score()

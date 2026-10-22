@@ -18,6 +18,9 @@ class LocalCellRetentionCfg:
     min_per_cell: int = 0
     demand_source: str = "external"
     detail_strength: float = 1.0
+    # Keep the same fraction of every cell (ranked by score inside the cell)
+    # instead of letting all cells compete for one global budget.
+    stratified: bool = False
 
 
 @dataclass(frozen=True)
@@ -201,6 +204,30 @@ def _one_required_per_cell(scores: Tensor, cell_ids: Tensor, cells: int) -> Tens
     return required
 
 
+def stratified_cell_scores(scores: Tensor, cell_ids: Tensor, cells: int) -> Tensor:
+    """Rank Gaussians inside their cell so a global top-k keeps each cell's share.
+
+    The returned key is ``-(within-cell rank fraction)`` plus a tie-breaker far
+    smaller than one rank step, so a global top-k keeps the best
+    ``ceil``/``floor(ratio * cell size)`` Gaussians of every cell.
+    """
+
+    batch, count = scores.shape
+    positions = torch.arange(count, device=scores.device).expand(batch, count)
+    by_score = torch.argsort(scores, dim=1, descending=True, stable=True)
+    global_rank = torch.empty_like(by_score).scatter_(1, by_score, positions)
+    grouped = by_score.gather(
+        1, torch.argsort(cell_ids[by_score], dim=1, stable=True)
+    )
+    sizes = torch.bincount(cell_ids, minlength=cells)
+    starts = torch.cumsum(sizes, 0) - sizes
+    rank_sorted = positions - starts[cell_ids[grouped]]
+    rank = torch.empty_like(grouped).scatter_(1, grouped, rank_sorted)
+    fraction = (rank.to(scores.dtype) + 0.5) / sizes[cell_ids].to(scores.dtype)
+    tie_break = 1.0 - global_rank.to(scores.dtype) / count
+    return -fraction + tie_break / (4.0 * float(sizes.max().item()))
+
+
 class LocalCellAllocator(nn.Module):
     """Combine Gaussian reliability scores with externally supplied cell demand."""
 
@@ -210,8 +237,10 @@ class LocalCellAllocator(nn.Module):
         self._validate_cfg()
 
     def _validate_cfg(self) -> None:
-        if self.cfg.demand_source not in ("external", "image_detail"):
-            raise ValueError("local_cells.demand_source must be external or image_detail.")
+        if self.cfg.demand_source not in ("external", "image_detail", "uniform"):
+            raise ValueError(
+                "local_cells.demand_source must be external, image_detail or uniform."
+            )
         if not torch.isfinite(torch.tensor(self.cfg.detail_strength)) or self.cfg.detail_strength < 0:
             raise ValueError("local_cells.detail_strength must be finite and nonnegative.")
         if int(self.cfg.cell_size) <= 0:
@@ -270,6 +299,12 @@ class LocalCellAllocator(nn.Module):
             cell_ids,
         )
         combined = base_scores * per_gaussian_demand
+        if bool(self.cfg.stratified):
+            combined = stratified_cell_scores(
+                combined.detach(),
+                cell_ids,
+                layout.cell_count(int(self.cfg.cell_size)),
+            )
         required = None
         if int(self.cfg.min_per_cell) == 1:
             required = _one_required_per_cell(

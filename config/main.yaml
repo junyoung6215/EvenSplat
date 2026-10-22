@@ -53,6 +53,8 @@ model:
       demand_floor: 0.0
       # 0: pure global competition, 1: reserve the best Gaussian per cell.
       min_per_cell: 0
+      # true: keep keep_ratio of every cell (score ranks only inside a cell).
+      stratified: false
 
 #dataset:
 #  overfit_to_scene: null
