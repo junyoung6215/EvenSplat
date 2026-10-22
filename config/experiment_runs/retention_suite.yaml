@@ -40,6 +40,10 @@ local:
   cell_size: 16
   detail_strength: 1.0
   min_per_cell: 0
+  # image_detail | uniform (uniform: no demand, score only).
+  demand_source: image_detail
+  # true: keep the budget ratio inside every cell instead of one global top-k.
+  stratified: false
 
 evaluation:
   scores: [random, base_opacity, opacity, reliability]
