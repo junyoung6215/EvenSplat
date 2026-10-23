@@ -1117,7 +1117,7 @@ class ModelWrapper(LightningModule):
         if self.test_cfg.align_pose:
             output = self.test_step_align(batch, gaussians)
         else:
-            with self.benchmarker.time("decoder", num_calls=v):
+            with self.benchmarker.memory("decoder"), self.benchmarker.time("decoder", num_calls=v):
                 output = self.decoder.forward(
                     gaussians,
                     batch["target"]["extrinsics"],
@@ -1252,15 +1252,16 @@ class ModelWrapper(LightningModule):
 
                         extrinsics = rearrange(new_extrinsic, "(b v) i j -> b v i j", b=b, v=v)
 
-        # Render Gaussians.
-        output = self.decoder.forward(
-            gaussians,
-            extrinsics,
-            batch["target"]["intrinsics"],
-            batch["target"]["near"],
-            batch["target"]["far"],
-            (h, w),
-        )
+        # Render Gaussians. Timed here too: with align_pose the final render is the decoder cost.
+        with torch.no_grad(), self.benchmarker.memory("decoder"), self.benchmarker.time("decoder", num_calls=v):
+            output = self.decoder.forward(
+                gaussians,
+                extrinsics,
+                batch["target"]["intrinsics"],
+                batch["target"]["near"],
+                batch["target"]["far"],
+                (h, w),
+            )
 
         return output
 
@@ -1271,6 +1272,7 @@ class ModelWrapper(LightningModule):
         self.benchmarker.dump_memory(
             path / "peak_memory.json"
         )
+        self.benchmarker.dump_stage_memory(path / "stage_memory.json")
         if self.test_cfg.save_olp_stats:
             self.olp_eval_recorder.write(path)
         self._write_gaussian_cap_metrics(path)
