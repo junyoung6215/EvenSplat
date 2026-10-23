@@ -15,6 +15,7 @@ with annotation_only_jaxtyping():
         GaussianRetention,
         GaussianRetentionCfg,
         deterministic_random_scores,
+        filtered_random_scores,
         flatten_gaussian_scores,
         gather_gaussians,
         merge_into_kept,
@@ -280,6 +281,15 @@ def test_merge_folds_dropped_gaussians_into_nearest_kept_of_cell() -> None:
     torch.testing.assert_close(merged.opacities, torch.tensor([[0.75, 0.68]]), atol=1e-4, rtol=0)
     merged.opacities.sum().backward()
     assert bool((opacities.grad != 0).all())
+
+
+def test_filtered_random_scores_rank_low_reliability_last() -> None:
+    reliability = torch.tensor([[0.9, 0.1, 0.6, 0.3]])
+    random = torch.tensor([[0.2, 0.9, 0.1, 0.8]])
+    scores = filtered_random_scores(reliability, random, floor=0.5)
+    order = scores.argsort(dim=1, descending=True)[0].tolist()
+    # Reliable Gaussians first (by random), then unreliable ones (by random).
+    assert order == [0, 2, 1, 3]
 
 
 def load_tests(loader, suite, pattern):

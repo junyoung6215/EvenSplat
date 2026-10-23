@@ -31,10 +31,12 @@ model:
     enabled: false
     apply_during_train: true
     apply_during_eval: true
-    # opacity | base_opacity | reliability | random | external
+    # opacity | base_opacity | reliability | random | reliability_filtered | external
     score_source: opacity
     external_score_key: retention_score
     random_seed: 0
+    # reliability_filtered: drop Gaussians below this reliability first, rest at random.
+    reliability_floor: 0.5
     # fixed_ratio | fixed_count | elastic
     mode: fixed_ratio
     keep_ratio: 0.5

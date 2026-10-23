@@ -18,6 +18,7 @@ RetentionScoreSource = Literal[
     "base_opacity",
     "reliability",
     "random",
+    "reliability_filtered",
     "external",
 ]
 
@@ -38,6 +39,9 @@ class GaussianRetentionCfg:
     score_source: RetentionScoreSource = "opacity"
     external_score_key: str = "retention_score"
     random_seed: int = 0
+    # reliability_filtered: Gaussians with reliability below this floor are
+    # dropped first; the rest of the budget is chosen at random.
+    reliability_floor: float = 0.5
     mode: RetentionMode = "fixed_ratio"
     keep_ratio: float = 0.5
     keep_count: int | None = None
@@ -163,6 +167,16 @@ def deterministic_random_scores(
         dtype=torch.float32,
     )
     return scores.to(dtype=reference.dtype)
+
+
+def filtered_random_scores(reliability: Tensor, random: Tensor, floor: float) -> Tensor:
+    """Rank Gaussians below the reliability floor last, and the rest at random.
+
+    Random scores lie in [0, 1), so the +1 offset keeps every Gaussian at or
+    above the floor ahead of every Gaussian below it.
+    """
+
+    return random + (reliability >= floor).to(random.dtype)
 
 
 def gather_gaussians(gaussians: Gaussians, indices: Tensor) -> Gaussians:
@@ -321,6 +335,7 @@ class GaussianRetention(nn.Module):
             "base_opacity",
             "reliability",
             "random",
+            "reliability_filtered",
             "external",
         ):
             raise ValueError(

@@ -65,6 +65,7 @@ from .gaussian_retention import (
     GaussianRetentionCfg,
     GaussianRetentionResult,
     deterministic_random_scores,
+    filtered_random_scores,
     flatten_gaussian_scores,
     merge_into_kept,
     retention_score_statistics,
@@ -279,6 +280,7 @@ class ModelWrapper(LightningModule):
         needs_score_dump = self.gaussian_retention.cfg.score_source in (
             "base_opacity",
             "reliability",
+            "reliability_filtered",
             "external",
         )
         return needs_score_dump or bool(self.local_cell_allocator.cfg.enabled)
@@ -312,6 +314,31 @@ class ModelWrapper(LightningModule):
         selection_id: int,
     ) -> Tensor:
         source = self.gaussian_retention.cfg.score_source
+        if source == "opacity":
+            return gaussians.opacities
+
+        if source == "reliability_filtered":
+            return filtered_random_scores(
+                self._retention_scores_from(
+                    "reliability", gaussians, batch, visualization_dump, selection_id
+                ),
+                self._retention_scores_from(
+                    "random", gaussians, batch, visualization_dump, selection_id
+                ),
+                float(self.gaussian_retention.cfg.reliability_floor),
+            )
+        return self._retention_scores_from(
+            source, gaussians, batch, visualization_dump, selection_id
+        )
+
+    def _retention_scores_from(
+        self,
+        source: str,
+        gaussians: Gaussians,
+        batch: BatchedExample,
+        visualization_dump: dict | None,
+        selection_id: int,
+    ) -> Tensor:
         if source == "opacity":
             return gaussians.opacities
 

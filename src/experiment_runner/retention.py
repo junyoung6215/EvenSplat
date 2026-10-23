@@ -23,7 +23,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / "config/experiment_runs/retention_suite.yaml"
-SCORES = ("random", "base_opacity", "opacity", "reliability")
+SCORES = ("random", "base_opacity", "opacity", "reliability", "reliability_filtered")
 
 
 def read_settings(path):
@@ -99,6 +99,8 @@ def build_plan(cfg, args):
                         ("detail_strength", cfg["local"]["detail_strength"])):
         if not isinstance(value, (float, int)) or not math.isfinite(value) or value < 0:
             raise ValueError(f"{name} must be finite and nonnegative")
+    if not isinstance(cfg["reliability_floor"], (float, int)) or not 0 <= cfg["reliability_floor"] <= 1:
+        raise ValueError("reliability_floor must be in [0, 1]")
     if not 0 <= cfg["olp_mix"] <= 1 or not 0 <= cfg["reliability_r_min"] < 1:
         raise ValueError("Invalid OLP mix or reliability r_min")
     positive_int(cfg["local"]["cell_size"], "local.cell_size")
@@ -140,6 +142,7 @@ def build_plan(cfg, args):
         "test.save_olp_stats": False, "test.save_gaussian_cap_stats": False,
         "model.gaussian_retention.mode": "fixed_ratio",
         "model.gaussian_retention.random_seed": cfg["seed"],
+        "model.gaussian_retention.reliability_floor": cfg["reliability_floor"],
         "model.gaussian_retention.start_step": 0,
         "model.gaussian_retention.diagnostics_every_n_steps": 1,
         "model.gaussian_retention.local_cells.demand_source": cfg["local"]["demand_source"],
@@ -220,7 +223,7 @@ def build_plan(cfg, args):
                     variants.append((f"{score}-r{ratio:g}-local{int(local)}", score, ratio, local, True))
     jobs = []
     for name, score, ratio, local, enabled in variants:
-        if enabled and score == "reliability" and not cfg["reliability_enabled"]:
+        if enabled and score.startswith("reliability") and not cfg["reliability_enabled"]:
             raise ValueError("Reliability ranking requires reliability_enabled=true")
         directory = output / name
         settings = dict(base, **{

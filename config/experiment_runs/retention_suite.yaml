@@ -15,6 +15,9 @@ olp_seed: 0
 olp_mix: 1.0
 reliability_enabled: true
 reliability_r_min: 0.05
+# reliability_filtered score: drop Gaussians with reliability below this first,
+# then fill the budget at random.
+reliability_floor: 0.5
 
 train:
   finetune_scope: full  # Set heads for frozen-backbone fine-tuning.
