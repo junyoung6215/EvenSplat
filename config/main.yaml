@@ -37,7 +37,7 @@ model:
     random_seed: 0
     # reliability_filtered: drop Gaussians below this reliability first, rest at random.
     reliability_floor: 0.5
-    # >0: during training, push reliability of Gaussians outside the budget toward r_min.
+    # >0: during training, push reliability outside the budget toward r_min, inside toward 1.
     budget_weight: 0.0
     # fixed_ratio | fixed_count | elastic
     mode: fixed_ratio

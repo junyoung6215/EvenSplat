@@ -44,7 +44,7 @@ class GaussianRetentionCfg:
     reliability_floor: float = 0.5
     # Budget loss on reliability during training: Gaussians that the current
     # ranking (stratified by local_cells.cell_size) would drop are pushed toward
-    # r_min. Before start_step all Gaussians are still rendered, so the
+    # r_min and the kept ones toward 1. Before start_step all Gaussians are still rendered, so the
     # reconstruction loss decides which ones can fade and r learns a ranking
     # for pruning. 0 disables it.
     budget_weight: float = 0.0
@@ -192,11 +192,13 @@ def retention_budget_loss(
     keep_ratio: float,
     r_min: float,
 ) -> tuple[Tensor, dict[str, Tensor]]:
-    """Mean distance to r_min of the Gaussians each cell would drop.
+    """Pull the Gaussians each cell would drop to r_min and the kept ones to 1.
 
-    The drop set follows the stratified top-k of the detached reliability, so
-    the gradient only lowers Gaussians currently ranked outside the budget.
-    Also returns detached kept/dropped reliability means for monitoring.
+    The split follows the stratified top-k of the detached reliability. Both
+    sides are needed: reliability multiplies opacity, so a one-sided push lets
+    every gate shrink together while base opacity compensates, and the gap
+    between kept and dropped never opens. Also returns detached kept/dropped
+    reliability means for monitoring.
     """
 
     batch, count = reliability.shape
@@ -207,9 +209,11 @@ def retention_budget_loss(
     detached = reliability.detach()
     stats = {"kept_mean": detached.masked_select(~dropped).mean()}
     if not bool(dropped.any()):
-        return reliability.new_zeros(()), stats
+        return (1.0 - reliability).mean(), stats
     stats["dropped_mean"] = detached.masked_select(dropped).mean()
-    return (reliability - float(r_min)).masked_select(dropped).mean(), stats
+    loss = (reliability - float(r_min)).masked_select(dropped).mean()
+    loss = loss + (1.0 - reliability).masked_select(~dropped).mean()
+    return loss, stats
 
 
 def gather_gaussians(gaussians: Gaussians, indices: Tensor) -> Gaussians:
