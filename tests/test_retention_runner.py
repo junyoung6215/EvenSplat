@@ -140,8 +140,16 @@ class RetentionRunnerTests(unittest.TestCase):
                                   "--budget-weight", ".05", "--soft-steps", "1000")["jobs"][0])
         self.assertEqual(v["model.gaussian_retention.budget_weight"], .05)
         self.assertEqual(v["model.gaussian_retention.start_step"], 1000)
+        self.assertFalse(v["model.gaussian_retention.budget_warmup"])
+        self.assertEqual(v["model.gaussian_retention.budget_hard_scale"], 1.0)
+        v = self.values(self.plan("train", "--prune", "--local", "--score", "reliability",
+                                  "--budget-weight", ".01", "--soft-steps", "1000",
+                                  "--budget-warmup", "--budget-hard-scale", ".1")["jobs"][0])
+        self.assertTrue(v["model.gaussian_retention.budget_warmup"])
+        self.assertEqual(v["model.gaussian_retention.budget_hard_scale"], .1)
         for args in (("--budget-weight", ".05"), ("--prune", "--local", "--score", "random",
-                     "--budget-weight", ".05"), ("--prune", "--local", "--budget-weight", "-1")):
+                     "--budget-weight", ".05"), ("--prune", "--local", "--budget-weight", "-1"),
+                     ("--prune", "--local", "--budget-weight", ".01", "--budget-warmup")):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 self.plan("train", *args)
 

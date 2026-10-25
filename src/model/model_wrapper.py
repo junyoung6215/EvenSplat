@@ -69,6 +69,7 @@ from .gaussian_retention import (
     flatten_gaussian_scores,
     merge_into_kept,
     retention_budget_loss,
+    retention_budget_weight,
     retention_score_statistics,
     retention_selection_mask,
 )
@@ -301,7 +302,9 @@ class ModelWrapper(LightningModule):
         )
         for name, value in stats.items():
             self.log(f"retention_budget/{name}", value)
-        return loss * float(cfg.budget_weight)
+        weight = retention_budget_weight(cfg, int(self.global_step))
+        self.log("retention_budget/weight", weight)
+        return loss * weight
 
     def _retention_requires_visualization_dump(self, stage: str) -> bool:
         if not self._retention_applies(stage):

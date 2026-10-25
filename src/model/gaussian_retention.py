@@ -48,6 +48,11 @@ class GaussianRetentionCfg:
     # reconstruction loss decides which ones can fade and r learns a ranking
     # for pruning. 0 disables it.
     budget_weight: float = 0.0
+    # Ramp the budget weight linearly from 0 over the soft phase (start_step)
+    # instead of applying it in full from the first step.
+    budget_warmup: bool = False
+    # Budget weight multiplier once hard pruning starts (after start_step).
+    budget_hard_scale: float = 1.0
     mode: RetentionMode = "fixed_ratio"
     keep_ratio: float = 0.5
     keep_count: int | None = None
@@ -183,6 +188,18 @@ def filtered_random_scores(reliability: Tensor, random: Tensor, floor: float) ->
     """
 
     return random + (reliability >= floor).to(random.dtype)
+
+
+def retention_budget_weight(cfg: GaussianRetentionCfg, step: int) -> float:
+    """Budget loss weight at a training step: optional ramp, then hard scale."""
+
+    weight = float(cfg.budget_weight)
+    soft = int(cfg.start_step)
+    if step >= soft:
+        return weight * float(cfg.budget_hard_scale)
+    if cfg.budget_warmup:
+        return weight * step / soft
+    return weight
 
 
 def retention_budget_loss(
@@ -401,6 +418,8 @@ class GaussianRetention(nn.Module):
             )
         if not math.isfinite(float(self.cfg.budget_weight)) or self.cfg.budget_weight < 0:
             raise ValueError("gaussian_retention.budget_weight must be finite and nonnegative.")
+        if not math.isfinite(float(self.cfg.budget_hard_scale)) or self.cfg.budget_hard_scale < 0:
+            raise ValueError("gaussian_retention.budget_hard_scale must be finite and nonnegative.")
         if not self.cfg.external_score_key:
             raise ValueError("gaussian_retention.external_score_key must not be empty.")
 

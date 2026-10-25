@@ -180,6 +180,10 @@ def build_plan(cfg, args):
             raise ValueError("--budget-weight must be finite and nonnegative")
         if type(args.soft_steps) is not int or args.soft_steps < 0:
             raise ValueError("--soft-steps must be a nonnegative integer")
+        if not math.isfinite(args.budget_hard_scale) or args.budget_hard_scale < 0:
+            raise ValueError("--budget-hard-scale must be finite and nonnegative")
+        if args.budget_warmup and args.soft_steps == 0:
+            raise ValueError("--budget-warmup ramps over --soft-steps, which must be positive")
         if (args.budget_weight > 0 or args.soft_steps > 0) and not (
                 args.local and args.score == "reliability"):
             raise ValueError("--budget-weight/--soft-steps need --prune --local --score reliability")
@@ -198,6 +202,8 @@ def build_plan(cfg, args):
             "model.gaussian_retention.diagnostics_every_n_steps": 100,
             "model.gaussian_retention.budget_weight": args.budget_weight,
             "model.gaussian_retention.start_step": args.soft_steps,
+            "model.gaussian_retention.budget_warmup": args.budget_warmup,
+            "model.gaussian_retention.budget_hard_scale": args.budget_hard_scale,
         })
         positive_int(base["trainer.max_steps"], "steps")
         if arm in ("legacy", "prior"):
@@ -424,6 +430,10 @@ def parser():
                            help="Push reliability of Gaussians outside the budget toward r_min")
             p.add_argument("--soft-steps", type=int, default=0,
                            help="Render all Gaussians for this many steps before hard pruning")
+            p.add_argument("--budget-warmup", action="store_true",
+                           help="Ramp the budget weight from 0 over the soft steps")
+            p.add_argument("--budget-hard-scale", type=float, default=1.0,
+                           help="Budget weight multiplier once hard pruning starts")
         else:
             p.add_argument("--split", choices=("validation", "test"), default="validation")
             p.add_argument("--scores", nargs="+", choices=SCORES)

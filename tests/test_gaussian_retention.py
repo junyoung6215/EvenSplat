@@ -20,6 +20,7 @@ with annotation_only_jaxtyping():
         gather_gaussians,
         merge_into_kept,
         retention_budget_loss,
+        retention_budget_weight,
     )
     from src.model.types import Gaussians
 
@@ -303,6 +304,17 @@ def test_budget_loss_splits_each_cell_into_kept_and_dropped() -> None:
     assert torch.isclose(loss, torch.tensor((0.15 + 0.35) / 2 + (0.1 + 0.2) / 2))
     loss.backward()
     assert reliability.grad.tolist() == [[-0.5, 0.5, 0.5, -0.5]]
+
+
+def test_budget_weight_ramps_over_soft_phase_then_scales() -> None:
+    cfg = GaussianRetentionCfg(budget_weight=0.01, start_step=1000)
+    assert retention_budget_weight(cfg, 500) == 0.01
+    cfg = GaussianRetentionCfg(
+        budget_weight=0.01, start_step=1000, budget_warmup=True, budget_hard_scale=0.1
+    )
+    assert retention_budget_weight(cfg, 0) == 0.0
+    assert abs(retention_budget_weight(cfg, 500) - 0.005) < 1e-12
+    assert abs(retention_budget_weight(cfg, 1000) - 0.001) < 1e-12
 
 
 def load_tests(loader, suite, pattern):
