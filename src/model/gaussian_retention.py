@@ -191,11 +191,12 @@ def retention_budget_loss(
     cells: int,
     keep_ratio: float,
     r_min: float,
-) -> Tensor:
+) -> tuple[Tensor, dict[str, Tensor]]:
     """Mean distance to r_min of the Gaussians each cell would drop.
 
     The drop set follows the stratified top-k of the detached reliability, so
     the gradient only lowers Gaussians currently ranked outside the budget.
+    Also returns detached kept/dropped reliability means for monitoring.
     """
 
     batch, count = reliability.shape
@@ -203,9 +204,12 @@ def retention_budget_loss(
     kept = max(1, min(count, int(round(count * float(keep_ratio)))))
     indices = torch.topk(keys, kept, dim=1).indices
     dropped = ~retention_selection_mask(reliability, indices)
+    detached = reliability.detach()
+    stats = {"kept_mean": detached.masked_select(~dropped).mean()}
     if not bool(dropped.any()):
-        return reliability.new_zeros(())
-    return (reliability - float(r_min)).masked_select(dropped).mean()
+        return reliability.new_zeros(()), stats
+    stats["dropped_mean"] = detached.masked_select(dropped).mean()
+    return (reliability - float(r_min)).masked_select(dropped).mean(), stats
 
 
 def gather_gaussians(gaussians: Gaussians, indices: Tensor) -> Gaussians:

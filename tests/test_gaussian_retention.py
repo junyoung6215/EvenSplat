@@ -296,7 +296,9 @@ def test_filtered_random_scores_rank_low_reliability_last() -> None:
 def test_budget_loss_lowers_only_gaussians_outside_each_cell_budget() -> None:
     reliability = torch.tensor([[0.9, 0.2, 0.4, 0.8]], requires_grad=True)
     cell_ids = torch.tensor([0, 0, 1, 1])
-    loss = retention_budget_loss(reliability, cell_ids, 2, keep_ratio=0.5, r_min=0.05)
+    loss, stats = retention_budget_loss(reliability, cell_ids, 2, keep_ratio=0.5, r_min=0.05)
+    assert torch.isclose(stats["kept_mean"], torch.tensor(0.85))
+    assert torch.isclose(stats["dropped_mean"], torch.tensor(0.3))
     # Each cell drops its lower half: 0.2 and 0.4.
     assert torch.isclose(loss, torch.tensor((0.15 + 0.35) / 2))
     loss.backward()

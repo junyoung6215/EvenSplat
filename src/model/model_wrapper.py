@@ -292,13 +292,15 @@ class ModelWrapper(LightningModule):
         cell_size = int(self.local_cell_allocator.cfg.cell_size)
         cell_ids = gaussian_cell_ids(layout, cell_size, reliability.device)
         cfg = self.gaussian_retention.cfg
-        loss = retention_budget_loss(
+        loss, stats = retention_budget_loss(
             reliability,
             cell_ids,
             layout.cell_count(cell_size),
             float(cfg.keep_ratio),
             float(self.encoder.gaussian_reliability_cfg.r_min),
         )
+        for name, value in stats.items():
+            self.log(f"retention_budget/{name}", value)
         return loss * float(cfg.budget_weight)
 
     def _retention_requires_visualization_dump(self, stage: str) -> bool:
