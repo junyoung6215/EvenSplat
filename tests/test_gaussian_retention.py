@@ -19,6 +19,7 @@ with annotation_only_jaxtyping():
         flatten_gaussian_scores,
         gather_gaussians,
         merge_into_kept,
+        retention_budget_loss,
     )
     from src.model.types import Gaussians
 
@@ -290,6 +291,16 @@ def test_filtered_random_scores_rank_low_reliability_last() -> None:
     order = scores.argsort(dim=1, descending=True)[0].tolist()
     # Reliable Gaussians first (by random), then unreliable ones (by random).
     assert order == [0, 2, 1, 3]
+
+
+def test_budget_loss_lowers_only_gaussians_outside_each_cell_budget() -> None:
+    reliability = torch.tensor([[0.9, 0.2, 0.4, 0.8]], requires_grad=True)
+    cell_ids = torch.tensor([0, 0, 1, 1])
+    loss = retention_budget_loss(reliability, cell_ids, 2, keep_ratio=0.5, r_min=0.05)
+    # Each cell drops its lower half: 0.2 and 0.4.
+    assert torch.isclose(loss, torch.tensor((0.15 + 0.35) / 2))
+    loss.backward()
+    assert reliability.grad.tolist() == [[0.0, 0.5, 0.5, 0.0]]
 
 
 def load_tests(loader, suite, pattern):

@@ -135,6 +135,16 @@ class RetentionRunnerTests(unittest.TestCase):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 self.plan(*args)
 
+    def test_budget_loss_sets_weight_and_soft_phase(self):
+        v = self.values(self.plan("train", "--prune", "--local", "--score", "reliability",
+                                  "--budget-weight", ".05", "--soft-steps", "1000")["jobs"][0])
+        self.assertEqual(v["model.gaussian_retention.budget_weight"], .05)
+        self.assertEqual(v["model.gaussian_retention.start_step"], 1000)
+        for args in (("--budget-weight", ".05"), ("--prune", "--local", "--score", "random",
+                     "--budget-weight", ".05"), ("--prune", "--local", "--budget-weight", "-1")):
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                self.plan("train", *args)
+
     def test_disabled_reliability_cannot_rank_by_reliability(self):
         self.cfg["reliability_enabled"] = False
         with self.assertRaises(ValueError):

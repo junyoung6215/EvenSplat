@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from .local_cell_retention import LocalCellRetentionCfg
+from .local_cell_retention import LocalCellRetentionCfg, stratified_cell_scores
 from .types import Gaussians
 
 
@@ -42,6 +42,12 @@ class GaussianRetentionCfg:
     # reliability_filtered: Gaussians with reliability below this floor are
     # dropped first; the rest of the budget is chosen at random.
     reliability_floor: float = 0.5
+    # Budget loss on reliability during training: Gaussians that the current
+    # ranking (stratified by local_cells.cell_size) would drop are pushed toward
+    # r_min. Before start_step all Gaussians are still rendered, so the
+    # reconstruction loss decides which ones can fade and r learns a ranking
+    # for pruning. 0 disables it.
+    budget_weight: float = 0.0
     mode: RetentionMode = "fixed_ratio"
     keep_ratio: float = 0.5
     keep_count: int | None = None
@@ -177,6 +183,29 @@ def filtered_random_scores(reliability: Tensor, random: Tensor, floor: float) ->
     """
 
     return random + (reliability >= floor).to(random.dtype)
+
+
+def retention_budget_loss(
+    reliability: Tensor,
+    cell_ids: Tensor,
+    cells: int,
+    keep_ratio: float,
+    r_min: float,
+) -> Tensor:
+    """Mean distance to r_min of the Gaussians each cell would drop.
+
+    The drop set follows the stratified top-k of the detached reliability, so
+    the gradient only lowers Gaussians currently ranked outside the budget.
+    """
+
+    batch, count = reliability.shape
+    keys = stratified_cell_scores(reliability.detach(), cell_ids, cells)
+    kept = max(1, min(count, int(round(count * float(keep_ratio)))))
+    indices = torch.topk(keys, kept, dim=1).indices
+    dropped = ~retention_selection_mask(reliability, indices)
+    if not bool(dropped.any()):
+        return reliability.new_zeros(())
+    return (reliability - float(r_min)).masked_select(dropped).mean()
 
 
 def gather_gaussians(gaussians: Gaussians, indices: Tensor) -> Gaussians:
@@ -362,6 +391,8 @@ class GaussianRetention(nn.Module):
             raise ValueError(
                 "gaussian_retention.diagnostics_every_n_steps must be positive."
             )
+        if not math.isfinite(float(self.cfg.budget_weight)) or self.cfg.budget_weight < 0:
+            raise ValueError("gaussian_retention.budget_weight must be finite and nonnegative.")
         if not self.cfg.external_score_key:
             raise ValueError("gaussian_retention.external_score_key must not be empty.")
 

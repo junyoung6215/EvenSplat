@@ -68,6 +68,7 @@ from .gaussian_retention import (
     filtered_random_scores,
     flatten_gaussian_scores,
     merge_into_kept,
+    retention_budget_loss,
     retention_score_statistics,
     retention_selection_mask,
 )
@@ -273,6 +274,32 @@ class ModelWrapper(LightningModule):
         if stage not in ("train", "eval"):
             raise ValueError(f"Unsupported retention stage: {stage!r}.")
         return self.gaussian_retention.applies(stage, int(self.global_step))
+
+    def _retention_budget_active(self) -> bool:
+        cfg = self.gaussian_retention.cfg
+        return bool(cfg.enabled) and bool(cfg.apply_during_train) and float(cfg.budget_weight) > 0
+
+    def _retention_budget_loss(
+        self,
+        gaussians: Gaussians,
+        batch: BatchedExample,
+        visualization_dump: dict | None,
+    ) -> Tensor:
+        reliability = self._retention_scores_from(
+            "reliability", gaussians, batch, visualization_dump, int(self.global_step)
+        )
+        layout = self._retention_grid_layout(gaussians, batch)
+        cell_size = int(self.local_cell_allocator.cfg.cell_size)
+        cell_ids = gaussian_cell_ids(layout, cell_size, reliability.device)
+        cfg = self.gaussian_retention.cfg
+        loss = retention_budget_loss(
+            reliability,
+            cell_ids,
+            layout.cell_count(cell_size),
+            float(cfg.keep_ratio),
+            float(self.encoder.gaussian_reliability_cfg.r_min),
+        )
+        return loss * float(cfg.budget_weight)
 
     def _retention_requires_visualization_dump(self, stage: str) -> bool:
         if not self._retention_applies(stage):
@@ -884,6 +911,7 @@ class ModelWrapper(LightningModule):
             or self._reliability_loss_active()
             or self._prior_loss_active()
             or self._retention_requires_visualization_dump("train")
+            or self._retention_budget_active()
         ):
             visualization_dump = {}
         gaussians = self.encoder(
@@ -956,6 +984,11 @@ class ModelWrapper(LightningModule):
                                                     pseudo_gt1['conf'], pseudo_gt2['conf'], disable_view1=False) * 0.1
             self.log("loss/distillation_loss", distillation_loss)
             total_loss = total_loss + distillation_loss
+
+        if self._retention_budget_active():
+            budget_loss = self._retention_budget_loss(gaussians, batch, visualization_dump)
+            self.log("loss/retention_budget", budget_loss)
+            total_loss = total_loss + budget_loss
 
         self.log("loss/total", total_loss)
 

@@ -176,6 +176,13 @@ def build_plan(cfg, args):
             raise ValueError("--local requires --prune; otherwise allocation has no effect")
         if arm != "control" and not cfg["reliability_enabled"]:
             raise ValueError("Auxiliary reliability losses require the reliability head")
+        if not math.isfinite(args.budget_weight) or args.budget_weight < 0:
+            raise ValueError("--budget-weight must be finite and nonnegative")
+        if type(args.soft_steps) is not int or args.soft_steps < 0:
+            raise ValueError("--soft-steps must be a nonnegative integer")
+        if (args.budget_weight > 0 or args.soft_steps > 0) and not (
+                args.local and args.score == "reliability"):
+            raise ValueError("--budget-weight/--soft-steps need --prune --local --score reliability")
         base.update({
             "trainer.max_steps": args.steps if args.steps is not None else t["steps"],
             "trainer.accumulate_grad_batches": accumulate,
@@ -189,6 +196,8 @@ def build_plan(cfg, args):
             "optimizer.lr": t["lr"],
             "optimizer.backbone_lr_multiplier": t["backbone_lr_multiplier"],
             "model.gaussian_retention.diagnostics_every_n_steps": 100,
+            "model.gaussian_retention.budget_weight": args.budget_weight,
+            "model.gaussian_retention.start_step": args.soft_steps,
         })
         positive_int(base["trainer.max_steps"], "steps")
         if arm in ("legacy", "prior"):
@@ -411,6 +420,10 @@ def parser():
             p.add_argument("--ratio", type=float, default=.5)
             p.add_argument("--score", choices=SCORES, default="reliability")
             p.add_argument("--local", action="store_true")
+            p.add_argument("--budget-weight", type=float, default=0.0,
+                           help="Push reliability of Gaussians outside the budget toward r_min")
+            p.add_argument("--soft-steps", type=int, default=0,
+                           help="Render all Gaussians for this many steps before hard pruning")
         else:
             p.add_argument("--split", choices=("validation", "test"), default="validation")
             p.add_argument("--scores", nargs="+", choices=SCORES)
