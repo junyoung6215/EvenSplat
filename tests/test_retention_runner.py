@@ -127,6 +127,16 @@ class RetentionRunnerTests(unittest.TestCase):
         self.assertEqual([j["local"] for j in p["jobs"][-2:]], [False, True])
         self.assertEqual(p["index"], str(Path(self.cfg["evaluation_index"]).resolve()))
 
+    def test_full_split_and_baseline_selection(self):
+        p = self.plan("eval-grid", "--split", "full", "--baselines", "none",
+                      "--scores", "reliability", "--ratios", ".5", "--local", "on")
+        self.assertEqual(p["index"], str(runner.local_path(runner.FULL_TEST_INDEX)))
+        self.assertEqual([j["name"] for j in p["jobs"]], ["reliability-r0.5-local1"])
+        p = self.plan("eval-grid", "--baselines", "off", "--scores")
+        self.assertEqual([j["name"] for j in p["jobs"]], ["baseline-off"])
+        with self.assertRaises(ValueError):
+            self.plan("eval-grid", "--baselines", "none", "--scores")
+
     def test_rejects_invalid_or_ineffective_options(self):
         for args in (("train", "--local"), ("train", "--arm", "prior"),
                      ("train", "--steps", "0"), ("train", "--run-id", "../escape"),
