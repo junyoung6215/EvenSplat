@@ -111,6 +111,47 @@ def gaussian_cell_ids(
     )
 
 
+def ordered_dither_scores(
+    layout: GaussianGridLayout,
+    cell_size: int,
+    device: torch.device,
+) -> Tensor:
+    """Score each Gaussian by its pixel's place in a Bayer matrix of its cell.
+
+    Ranked inside each cell, these scores keep a fixed, evenly spread subset of
+    pixel positions: one per 2x2 cell is stride-2 subsampling, two is a
+    checkerboard. Returned in view/pixel/surface/sample order.
+    """
+
+    size = int(cell_size)
+    if size <= 0 or size & (size - 1):
+        raise ValueError("Ordered-dither scores need a power-of-two cell_size.")
+    bayer = torch.zeros(1, 1, dtype=torch.long, device=device)
+    while bayer.shape[0] < size:
+        bayer = torch.cat(
+            (
+                torch.cat((4 * bayer, 4 * bayer + 2), dim=1),
+                torch.cat((4 * bayer + 3, 4 * bayer + 1), dim=1),
+            ),
+            dim=0,
+        )
+    y = torch.arange(layout.height, device=device) % size
+    x = torch.arange(layout.width, device=device) % size
+    order = bayer[y[:, None], x[None, :]]
+    return (
+        (-order.float())
+        .reshape(1, layout.height, layout.width, 1, 1)
+        .expand(
+            layout.views,
+            layout.height,
+            layout.width,
+            layout.surfaces,
+            layout.samples_per_surface,
+        )
+        .reshape(-1)
+    )
+
+
 def pool_cell_demand(
     demand: Tensor,
     layout: GaussianGridLayout,

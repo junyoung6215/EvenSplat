@@ -317,6 +317,22 @@ def test_budget_weight_ramps_over_soft_phase_then_scales() -> None:
     assert abs(retention_budget_weight(cfg, 1000) - 0.001) < 1e-12
 
 
+def test_keep_ratio_override_sets_the_fixed_budget() -> None:
+    selector = GaussianRetention(
+        GaussianRetentionCfg(enabled=True, keep_ratio=0.5, train_keep_ratio_min=0.25)
+    )
+    gaussians = make_gaussians(count=8)
+    scores = gaussians.opacities.clone()
+    assert selector(gaussians, scores).output_count == 4
+    result = selector(gaussians, scores, keep_ratio=0.25)
+    torch.testing.assert_close(result.indices, torch.tensor([[6, 7]]))
+    try:
+        GaussianRetention(GaussianRetentionCfg(keep_ratio=0.5, train_keep_ratio_min=0.75))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("train_keep_ratio_min above keep_ratio must be rejected")
+
 def load_tests(loader, suite, pattern):
     return add_function_tests(suite, globals())
 

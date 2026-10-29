@@ -23,7 +23,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / "config/experiment_runs/retention_suite.yaml"
-SCORES = ("random", "base_opacity", "opacity", "reliability", "reliability_filtered")
+SCORES = ("random", "base_opacity", "opacity", "reliability", "reliability_filtered", "grid")
 FULL_TEST_INDEX = "assets/evaluation_index_re10k.json"
 
 
@@ -186,6 +186,10 @@ def build_plan(cfg, args):
             raise ValueError("--soft-steps must be a nonnegative integer")
         if not math.isfinite(args.budget_hard_scale) or args.budget_hard_scale < 0:
             raise ValueError("--budget-hard-scale must be finite and nonnegative")
+        if not math.isfinite(args.ratio_min) or not 0 <= args.ratio_min <= args.ratio:
+            raise ValueError("--ratio-min must be in [0, --ratio]")
+        if args.ratio_min > 0 and not args.prune:
+            raise ValueError("--ratio-min requires --prune")
         if args.budget_warmup and args.soft_steps == 0:
             raise ValueError("--budget-warmup ramps over --soft-steps, which must be positive")
         if (args.budget_weight > 0 or args.soft_steps > 0) and not (
@@ -208,6 +212,7 @@ def build_plan(cfg, args):
             "model.gaussian_retention.start_step": args.soft_steps,
             "model.gaussian_retention.budget_warmup": args.budget_warmup,
             "model.gaussian_retention.budget_hard_scale": args.budget_hard_scale,
+            "model.gaussian_retention.train_keep_ratio_min": args.ratio_min,
         })
         positive_int(base["trainer.max_steps"], "steps")
         if arm in ("legacy", "prior"):
@@ -432,6 +437,8 @@ def parser():
             p.add_argument("--accumulate", type=int)
             p.add_argument("--prune", action="store_true")
             p.add_argument("--ratio", type=float, default=.5)
+            p.add_argument("--ratio-min", type=float, default=0.0,
+                           help="Draw each step's keep ratio from [ratio-min, ratio]; 0 keeps --ratio fixed")
             p.add_argument("--score", choices=SCORES, default="reliability")
             p.add_argument("--local", action="store_true")
             p.add_argument("--budget-weight", type=float, default=0.0,

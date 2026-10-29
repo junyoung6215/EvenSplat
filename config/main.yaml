@@ -31,7 +31,8 @@ model:
     enabled: false
     apply_during_train: true
     apply_during_eval: true
-    # opacity | base_opacity | reliability | random | reliability_filtered | external
+    # opacity | base_opacity | reliability | random | reliability_filtered | grid | external
+    # grid: fixed Bayer-ordered pixel positions per local cell (stride-2 / checkerboard on 2x2).
     score_source: opacity
     external_score_key: retention_score
     random_seed: 0
@@ -43,6 +44,8 @@ model:
     budget_warmup: false
     # Budget weight multiplier once hard pruning starts.
     budget_hard_scale: 1.0
+    # >0: each training step keeps a ratio drawn from [train_keep_ratio_min, keep_ratio].
+    train_keep_ratio_min: 0.0
     # fixed_ratio | fixed_count | elastic
     mode: fixed_ratio
     keep_ratio: 0.5

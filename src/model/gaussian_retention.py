@@ -19,6 +19,7 @@ RetentionScoreSource = Literal[
     "reliability",
     "random",
     "reliability_filtered",
+    "grid",
     "external",
 ]
 
@@ -53,6 +54,9 @@ class GaussianRetentionCfg:
     budget_warmup: bool = False
     # Budget weight multiplier once hard pruning starts (after start_step).
     budget_hard_scale: float = 1.0
+    # >0: each training step keeps a ratio drawn uniformly from
+    # [train_keep_ratio_min, keep_ratio], so one model serves every budget.
+    train_keep_ratio_min: float = 0.0
     mode: RetentionMode = "fixed_ratio"
     keep_ratio: float = 0.5
     keep_count: int | None = None
@@ -390,6 +394,7 @@ class GaussianRetention(nn.Module):
             "reliability",
             "random",
             "reliability_filtered",
+            "grid",
             "external",
         ):
             raise ValueError(
@@ -399,6 +404,12 @@ class GaussianRetention(nn.Module):
             raise ValueError(
                 "gaussian_retention.keep_ratio must be in (0, 1], got "
                 f"{self.cfg.keep_ratio}."
+            )
+        ratio_min = float(self.cfg.train_keep_ratio_min)
+        if not 0.0 <= ratio_min <= float(self.cfg.keep_ratio):
+            raise ValueError(
+                "gaussian_retention.train_keep_ratio_min must be in [0, keep_ratio], got "
+                f"{self.cfg.train_keep_ratio_min}."
             )
         if self.cfg.keep_count is not None and int(self.cfg.keep_count) <= 0:
             raise ValueError("gaussian_retention.keep_count must be positive when set.")
@@ -447,9 +458,10 @@ class GaussianRetention(nn.Module):
             applied=False,
         )
 
-    def _fixed_keep_count(self, total: int) -> int:
+    def _fixed_keep_count(self, total: int, keep_ratio: float | None = None) -> int:
         if self.cfg.mode == "fixed_ratio":
-            requested = int(round(total * float(self.cfg.keep_ratio)))
+            ratio = self.cfg.keep_ratio if keep_ratio is None else keep_ratio
+            requested = int(round(total * float(ratio)))
         elif self.cfg.mode == "fixed_count":
             if self.cfg.keep_count is None:
                 raise ValueError(
@@ -583,6 +595,7 @@ class GaussianRetention(nn.Module):
         gaussians: Gaussians,
         scores: Tensor,
         required_mask: Tensor | None = None,
+        keep_ratio: float | None = None,
     ) -> GaussianRetentionResult:
         if not self.cfg.enabled:
             return self.identity(gaussians)
@@ -610,7 +623,7 @@ class GaussianRetention(nn.Module):
                 required_mask,
             )
         else:
-            kept = self._fixed_keep_count(total)
+            kept = self._fixed_keep_count(total, keep_ratio)
             if kept >= total:
                 return self.identity(gaussians)
             indices = self._fixed_indices(

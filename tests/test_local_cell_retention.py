@@ -22,6 +22,7 @@ from src.model.local_cell_retention import (  # noqa: E402
     LocalCellAllocator,
     LocalCellRetentionCfg,
     gaussian_cell_ids,
+    ordered_dither_scores,
     pool_cell_demand,
     retention_distribution_statistics,
 )
@@ -249,6 +250,20 @@ def test_stratified_cells_break_partial_levels_by_score() -> None:
     # Best of each cell first, then the best runner-up across cells.
     torch.testing.assert_close(result.indices, torch.tensor([[1, 2, 3], [0, 1, 3]]))
 
+
+def test_ordered_dither_keeps_stride_two_then_checkerboard() -> None:
+    layout = GaussianGridLayout(views=1, height=2, width=4, surfaces=1, samples_per_surface=1)
+    scores = ordered_dither_scores(layout, 2, torch.device("cpu"))[None]
+    allocator = LocalCellAllocator(
+        LocalCellRetentionCfg(enabled=True, cell_size=2, stratified=True)
+    )
+    allocation = allocator(scores, torch.ones(1, 1, 2, 4), layout)
+    for kept, expected in ((2, [0, 2]), (4, [0, 2, 5, 7])):
+        selector = GaussianRetention(
+            GaussianRetentionCfg(enabled=True, mode="fixed_count", keep_count=kept)
+        )
+        result = selector(make_gaussians(8), allocation.scores)
+        torch.testing.assert_close(result.indices, torch.tensor([expected]))
 
 def load_tests(loader, suite, pattern):
     return add_function_tests(suite, globals())

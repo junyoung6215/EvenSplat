@@ -78,6 +78,7 @@ from .local_cell_retention import (
     LocalCellAllocation,
     LocalCellAllocator,
     gaussian_cell_ids,
+    ordered_dither_scores,
     retention_distribution_statistics,
 )
 from .types import Gaussians
@@ -374,6 +375,20 @@ class ModelWrapper(LightningModule):
         if source == "opacity":
             return gaussians.opacities
 
+        if source == "grid":
+            layout = self._retention_grid_layout(gaussians, batch)
+            scores = ordered_dither_scores(
+                layout,
+                int(self.local_cell_allocator.cfg.cell_size),
+                gaussians.opacities.device,
+            )
+            return (
+                scores.to(gaussians.opacities.dtype)
+                .unsqueeze(0)
+                .expand_as(gaussians.opacities)
+                .contiguous()
+            )
+
         if source == "random":
             trainer = getattr(self, "_trainer", None)
             world_size = max(int(getattr(trainer, "world_size", 1)), 1)
@@ -534,6 +549,20 @@ class ModelWrapper(LightningModule):
         for name, value in distribution.items():
             self.log(f"{prefix}/retention_{name}", value, prog_bar=False)
 
+    def _train_keep_ratio(self, selection_id: int) -> float | None:
+        cfg = self.gaussian_retention.cfg
+        low = float(cfg.train_keep_ratio_min)
+        if low <= 0.0:
+            return None
+        generator = torch.Generator().manual_seed(
+            int(cfg.random_seed) * 1_000_003 + int(selection_id)
+        )
+        ratio = low + float(torch.rand((), generator=generator)) * (
+            float(cfg.keep_ratio) - low
+        )
+        self.log("train/retention_keep_ratio", ratio)
+        return ratio
+
     def _apply_gaussian_retention(
         self,
         gaussians: Gaussians,
@@ -562,6 +591,7 @@ class ModelWrapper(LightningModule):
             gaussians,
             scores,
             required_mask=required_mask,
+            keep_ratio=self._train_keep_ratio(selection_id) if stage == "train" else None,
         )
         if (
             allocation is not None
