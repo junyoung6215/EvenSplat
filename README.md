@@ -54,7 +54,7 @@ RealEstate10K, 256 × 256, two context views, full test set (5,590 evaluable sce
 | **Ours 25%** | **33K** | **24.62** | **0.817** | **0.184** |
 
 <p align="center">
-  <img src="docs/figures/psnr_vs_gaussians.png" alt="PSNR against the number of Gaussians for our model, our base and control, NoPoSplat, MVSplat, pixelSplat and ATSplat" width="80%">
+  <img src="docs/figures/psnr_vs_gaussians.png" alt="PSNR against the number of Gaussians for our model, our base and control, NoPoSplat, MVSplat, pixelSplat and ATSplat" width="55%">
 </p>
 <p align="center"><sub>Full RealEstate10K test set. *Reported in NoPoSplat. **Reported in ATSplat. Posed methods use ground-truth
 camera poses. <i>Control</i> is our base fine-tuned for the same 10K steps without pruning.</sub></p>
