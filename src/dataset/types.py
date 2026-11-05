@@ -21,7 +21,6 @@ class BatchedViews(TypedDict, total=False):
     far: Float[Tensor, "batch _"]  # batch view
     index: Int64[Tensor, "batch _"]  # batch view
     overlap: Float[Tensor, "batch _"]  # batch view
-    cell_demand: Float[Tensor, "batch _ _ _"]  # batch view cell_h cell_w
 
 
 class BatchedExample(TypedDict, total=False):

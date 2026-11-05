@@ -1,174 +1,189 @@
-> OLP-H capstone experiment docs:
-> [Korean README](README_OLP_H_KO.md),
-> [Korean experiment protocol](docs/OLP_H_EXPERIMENT_PROTOCOL_KO.md),
-> [English README](README_OLP_H_EN.md),
-> [Korean diff report](docs/OLP_H_DIFF_REPORT_KO.md),
-> [English diff report](docs/OLP_H_DIFF_REPORT_EN.md).
+<div align="center">
+
+<h1>Stratified Retention for Compact<br>Pose-free Feed-forward 3D Gaussian Splatting</h1>
+
+**Kyoosuk Hwang** · **Junyoung Kwon**
+
+Seoul National University of Science and Technology · Capstone Design 2026
+
+[![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)](#requirements)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.1.2-EE4C2C?logo=pytorch&logoColor=white)](#requirements)
+[![CUDA](https://img.shields.io/badge/CUDA-11.8-76B900?logo=nvidia&logoColor=white)](#requirements)
+[![Checkpoints](https://img.shields.io/badge/%F0%9F%A4%97-Checkpoints-yellow)](https://huggingface.co/kyoosuk/LitePoSplat)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
+</div>
 
 <p align="center">
-  <h2 align="center">No Pose, No Problem <img src="https://noposplat.github.io/static/images/icon.svg" width="20" style="position: relative; top: 1px;"> <br> Surprisingly Simple 3D Gaussian Splats from Sparse Unposed Images</h2>
- <p align="center">
-    <a href="https://botaoye.github.io/">Botao Ye</a>
-    ·
-    <a href="https://sifeiliu.net/">Sifei Liu</a>
-    ·
-    <a href="https://haofeixu.github.io/">Haofei Xu</a>
-    ·
-    <a href="https://sunshineatnoon.github.io/">Xueting Li</a>
-    ·
-    <a href="https://people.inf.ethz.ch/marc.pollefeys/">Marc Pollefeys</a>
-    ·
-    <a href="https://faculty.ucmerced.edu/mhyang/">Ming-Hsuan Yang</a>
-    ·
-    <a href="https://pengsongyou.github.io/">Songyou Peng</a>
-  </p>
-  <h3 align="center"><a href="https://arxiv.org/abs/2410.24207">Paper</a> | <a href="https://noposplat.github.io/">Project Page</a> </h3>
-  <div align="center"></div>
-</p>
-<p align="center">
-  <a href="">
-    <img src="https://noposplat.github.io/static/images/teaser.png" alt="Teaser" width="100%">
-  </a>
+  <img src="docs/figures/hero_qualitative.jpg" alt="Ground truth, the unpruned base with 131K Gaussians, and our model with 75, 50 and 25% of the Gaussians" width="100%">
 </p>
 
+From **two unposed images**, our model renders novel views with **25 to 75% of the per-pixel Gaussians**
+and stays close to the unpruned model. On the RealEstate10K test set, keeping 75% beats NoPoSplat in PSNR
+(25.26 vs. 25.03 dB), and keeping 50% comes within 0.02 dB while halving peak render memory (167 → 87 MB).
+
+## Method
 
 <p align="center">
-<strong>NoPoSplat</strong> predicts 3D Gaussians in a canonical space from unposed sparse images, <br> enabling high-quality novel view synthesis and accurate pose estimation.
+  <img src="docs/figures/architecture.png" alt="Pose-free backbone, OLP-H, Gaussian heads with reliability, stratified retention and pruning-aware fine-tuning" width="100%">
 </p>
-<br>
 
+| | Component | Idea | Code |
+| :-: | --- | --- | --- |
+| ① | **OLP-H** | Fixed orthogonal Hadamard rotation of the Gaussian-head feature | [`olp.py`](src/model/encoder/heads/olp.py) |
+| ② | **Reliability head** | Per-Gaussian gate *r* on opacity, trained with a context-residual loss | [`reliability.py`](src/model/encoder/heads/reliability.py), [`loss_reliability.py`](src/loss/loss_reliability.py) |
+| ③ | **Stratified retention** | Keep the same fraction in every 2×2 pixel cell; drop *r* < 0.35 first, fill the rest at random | [`retention/`](src/model/retention/) |
+| ④ | **Pruning-aware fine-tuning** | Train with the same selection so the kept Gaussians cover the gaps | [`model_wrapper.py`](src/model/model_wrapper.py) |
 
+Retention runs before rasterization, so the renderer only sees the kept Gaussians. Every component is off by
+default, and the default config reproduces NoPoSplat. Details: [docs/METHOD.md](docs/METHOD.md).
 
-<br>
+## Results
 
-<!-- TABLE OF CONTENTS -->
-<details open="open" style='padding: 10px; border-radius:5px 30px 30px 5px; border-style: solid; border-width: 1px;'>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#installation">Installation</a>
-    </li>
-    <li>
-      <a href="#pre-trained-checkpoints">Pre-trained Checkpoints</a>
-    </li>
-    <li>
-      <a href="#camera-conventions">Camera Conventions</a>
-    </li>
-    <li>
-      <a href="#datasets">Datasets</a>
-    </li>
-    <li>
-      <a href="#running-the-code">Running the Code</a>
-    </li>
-    <li>
-      <a href="#acknowledgements">Acknowledgements</a>
-    </li>
-    <li>
-      <a href="#citation">Citation</a>
-    </li>
-</ol>
-</details>
+RealEstate10K, 256 × 256, two context views, full test set (5,590 evaluable scenes).
 
-## Installation
-Our code relies on Python 3.10+, and is developed based on PyTorch 2.1.2 and CUDA 11.8, but it should work with higher Pytorch/CUDA versions as well.
+<p align="center">
+  <img src="docs/figures/psnr_vs_gaussians.png" alt="PSNR against the number of Gaussians for our model, our base and control, NoPoSplat, MVSplat, pixelSplat and ATSplat" width="55%">
+</p>
+<p align="center"><sub>Full RealEstate10K test set. *Reported in NoPoSplat. **Reported in ATSplat. Posed methods use ground-truth
+camera poses. <i>Control</i> is our base fine-tuned for the same 10K steps without pruning.</sub></p>
 
-1. Clone NoPoSplat.
-```bash
-git clone https://github.com/cvg/NoPoSplat
-cd NoPoSplat
-```
+| Model | #Gaussians | PSNR ↑ | SSIM ↑ | LPIPS ↓ |
+| --- | :-: | :-: | :-: | :-: |
+| pixelSplat* (posed) | 393K | 23.85 | 0.806 | 0.185 |
+| MVSplat* (posed) | 131K | 23.98 | 0.811 | 0.176 |
+| ATSplat** (posed, compact) | 23K | 26.70 | 0.861 | 0.146 |
+| NoPoSplat* | 131K | 25.03 | 0.838 | 0.160 |
+| Base (① + ②) | 131K | 24.84 | 0.824 | 0.163 |
+| Control (base + 10K FT, no pruning) | 131K | 25.45 | 0.842 | 0.155 |
+| **Ours 75%** | **98K** | **25.26** | **0.837** | **0.161** |
+| **Ours 50%** | **66K** | **25.01** | **0.829** | **0.169** |
+| **Ours 25%** | **33K** | **24.62** | **0.817** | **0.184** |
 
-2. Create the environment, here we show an example using conda.
-```bash
-conda create -y -n noposplat python=3.10
-conda activate noposplat
-pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu118
-pip install -r requirements.txt
-```
+**Ablation** at 50% kept (full test set). Global top-k removes whole regions; stratified cells keep every region,
+and fine-tuning closes the remaining gaps.
 
-3. Optional, compile the cuda kernels for RoPE (as in CroCo v2).
-```bash
-# NoPoSplat relies on RoPE positional embeddings for which you can compile some cuda kernels for faster runtime.
-cd src/model/encoder/backbone/croco/curope/
-python setup.py build_ext --inplace
-cd ../../../../../..
-```
+<p align="center">
+  <img src="docs/figures/retention_progression.jpg" alt="One scene at 50%: full, global top-k by r, stratified, and stratified with fine-tuning" width="100%">
+</p>
 
-## Pre-trained Checkpoints
-Our models are hosted on [Hugging Face](https://huggingface.co/botaoye/noposplat) 🤗
+| Setting | PSNR ↑ | SSIM ↑ | LPIPS ↓ |
+| --- | :-: | :-: | :-: |
+| Global top-k by *r*, no fine-tuning | 14.39 | 0.529 | 0.390 |
+| + stratified 2 × 2 cells | 19.16 | 0.625 | 0.354 |
+| + pruning-aware fine-tuning (2K steps) | 24.78 | 0.824 | 0.175 |
+| + *r* filter | 24.88 | 0.826 | 0.172 |
+| + fine-tuning 10K steps (**final**) | **25.01** | **0.829** | **0.169** |
+| Fine-tune 10K without pruning, then select | 19.13 | 0.635 | 0.348 |
 
-|                                                       Model name                                                       | Training resolutions | Training data | Input view num. |   
-|:----------------------------------------------------------------------------------------------------------------------:|:--------------------:|:-------------:|:---------------:|
-|                    [re10k.ckpt]( https://huggingface.co/botaoye/NoPoSplat/resolve/main/re10k.ckpt)                     |        256x256       |     re10k     |        2        |
-|                     [acid.ckpt]( https://huggingface.co/botaoye/NoPoSplat/resolve/main/acid.ckpt )                     |        256x256       |     acid      |        2        |
-|            [mixRe10kDl3dv.ckpt]( https://huggingface.co/botaoye/NoPoSplat/resolve/main/mixRe10kDl3dv.ckpt )            |        256x256       | re10k, dl3dv  |        2        |
-|    [mixRe10kDl3dv_512x512.ckpt]( https://huggingface.co/botaoye/NoPoSplat/resolve/main/mixRe10kDl3dv_512x512.ckpt )    |        512x512       | re10k, dl3dv  |        2        |
-|             [re10k_3views.ckpt]( https://huggingface.co/botaoye/NoPoSplat/resolve/main/re10k_3views.ckpt)              |        256x256       |     re10k     |        3        |
+## Requirements
 
-We assume the downloaded weights are located in the `pretrained_weights` directory.
-
-## Camera Conventions
-Our camera system is the same as [pixelSplat](https://github.com/dcharatan/pixelsplat). The camera intrinsic matrices are normalized (the first row is divided by image width, and the second row is divided by image height).
-The camera extrinsic matrices are OpenCV-style camera-to-world matrices ( +X right, +Y down, +Z camera looks into the screen).
-
-## Datasets
-Please refer to [DATASETS.md](DATASETS.md) for dataset preparation.
-
-## Running the Code
-### Training
-First download the [MASt3R](https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth) pretrained model and put it in the `./pretrained_weights` directory.
-
-Then call `src/main.py` via:
+- Linux, one NVIDIA GPU, CUDA 11.8
+- Python 3.10, PyTorch 2.1.2
 
 ```bash
-# 8 GPUs, with each batch size = 16. Remove the last two arguments if you don't want to use wandb for logging
-python -m src.main +experiment=re10k wandb.mode=online wandb.name=re10k
+git clone https://github.com/junyoung6215/capstone_project
+cd capstone_project
+bash scripts/create_cuda118_env.sh     # conda env + Gaussian rasterizer
+conda activate noposplat-olp-cuda118
 ```
-This default training configuration requires 8x GPUs with a batch size of 16 on each GPU (>=80GB memory). 
-The training will take approximately 6 hours to complete.
-You can adjust the batch size to fit your hardware, but note that changing the total batch size may require modifying the initial learning rate to maintain performance.
-You can refer to the [re10k_1x8](config/experiment/re10k_1x8.yaml) for training on 1 A6000 GPU (48GB memory), which will produce similar performance.
 
+Exact versions: [`env/environment-cuda118.yml`](env/environment-cuda118.yml).
 
-### Evaluation
-#### Novel View Synthesis
+### Directory structure
+
+Data and checkpoints go under the repository root (both are git-ignored):
+
+```text
+capstone_project/
+├── src/
+│   ├── model/
+│   │   ├── encoder/heads/olp.py           # ① OLP-H
+│   │   ├── encoder/heads/reliability.py   # ② reliability head
+│   │   ├── retention/                     # ③ stratified retention, r filter
+│   │   └── model_wrapper.py               # ④ retention in training and evaluation
+│   ├── loss/loss_reliability.py           # ② context-residual loss
+│   └── experiment_runner/retention.py     # train / eval-grid / summarize
+├── config/                                # Hydra configs (all components off by default)
+│   └── experiment_runs/retention_suite.yaml   # runner settings for the final method
+├── scripts/                               # environment, data, run_retention.py
+├── assets/                                # evaluation indices
+├── docs/                                  # METHOD.md, REPRODUCE.md, figures
+├── tests/
+├── datasets/re10k/                        # setup_re10k_dataset.sh
+│   ├── train/*.torch, index.json
+│   └── test/*.torch, index.json
+├── checkpoints/                           # downloaded from Hugging Face
+│   └── retention_r{25,50,75}_re10k.ckpt
+└── pretrained_weights/re10k.ckpt          # NoPoSplat, only to rebuild the base model
+```
+
+## Data
+
+RealEstate10K in the chunked format of [DATASETS.md](DATASETS.md):
+
 ```bash
-# RealEstate10K
-python -m src.main +experiment=re10k mode=test wandb.name=re10k dataset/view_sampler@dataset.re10k.view_sampler=evaluation dataset.re10k.view_sampler.index_path=assets/evaluation_index_re10k.json checkpointing.load=./pretrained_weights/re10k.ckpt test.save_image=true
-# ACID
-python -m src.main +experiment=acid mode=test wandb.name=acid dataset/view_sampler@dataset.re10k.view_sampler=evaluation dataset.re10k.view_sampler.index_path=assets/evaluation_index_acid.json checkpointing.load=./pretrained_weights/acid.ckpt test.save_image=true
-# DTU
-python -m src.main +experiment=re10k mode=test wandb.name=dtu dataset/view_sampler@dataset.re10k.view_sampler=evaluation dataset.re10k.view_sampler.index_path=assets/evaluation_index_dtu.json dataset.re10k.roots=[datasets/dtu] dataset.re10k.skip_bad_shape=false checkpointing.load=./pretrained_weights/re10k.ckpt test.save_image=true
-# ScanNet++
-python -m src.main +experiment=re10k mode=test wandb.name=scannetpp dataset/view_sampler@dataset.re10k.view_sampler=evaluation dataset.re10k.view_sampler.index_path=assets/evaluation_index_scannetpp.json dataset.re10k.roots=[datasets/scannetpp] dataset.re10k.skip_bad_shape=false checkpointing.load=./pretrained_weights/re10k.ckpt test.save_image=true
-# RealEstate10K 3 Input Views
-python -m src.main +experiment=re10k_3view mode=test wandb.name=re10k_3view dataset/view_sampler@dataset.re10k.view_sampler=evaluation dataset.re10k.view_sampler.index_path=assets/evaluation_index_re10k.json checkpointing.load=./pretrained_weights/re10k_3view.ckpt test.save_image=true
+RE10K_SOURCE_DIR=/path/to/re10k bash scripts/setup_re10k_dataset.sh
 ```
-You can set `wandb.name=SAVE_FOLDER_NAME` to specify the saving path.
 
-#### Pose Estimation
-To evaluate the pose estimation performance, you can run the following command:
+| Index | Scenes | Use |
+| --- | :-: | --- |
+| [`evaluation_index_re10k.json`](assets/evaluation_index_re10k.json) | 5,601 | full test set (reported numbers) |
+| [`evaluation_index_re10k_test500.json`](assets/evaluation_index_re10k_test500.json) | 500 | quick test |
+| [`evaluation_index_re10k_val64.json`](assets/evaluation_index_re10k_val64.json) | 64 | validation during fine-tuning |
+
+## Checkpoints
+
+| Model | Gaussians kept | Download |
+| --- | :-: | :-: |
+| Ours 25% | 33K | [`retention_r25_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r25_re10k.ckpt) |
+| Ours 50% | 66K | [`retention_r50_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r50_re10k.ckpt) |
+| Ours 75% | 98K | [`retention_r75_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r75_re10k.ckpt) |
+| Base (① + ②), fine-tuning start | 131K | [`epoch_1-step_75000.ckpt`](https://huggingface.co/kyoosuk/noposplat-olp-rel-re10k) |
+
 ```bash
-# RealEstate10K
-python -m src.eval_pose +experiment=re10k +evaluation=eval_pose checkpointing.load=./pretrained_weights/mixRe10kDl3dv.ckpt dataset/view_sampler@dataset.re10k.view_sampler=evaluation dataset.re10k.view_sampler.index_path=assets/evaluation_index_re10k.json
-# ACID
-python -m src.eval_pose +experiment=acid +evaluation=eval_pose checkpointing.load=./pretrained_weights/mixRe10kDl3dv.ckpt dataset/view_sampler@dataset.re10k.view_sampler=evaluation dataset.re10k.view_sampler.index_path=assets/evaluation_index_acid.json
-# ScanNet-1500
-python -m src.eval_pose +experiment=scannet_pose +evaluation=eval_pose checkpointing.load=./pretrained_weights/mixRe10kDl3dv.ckpt
+hf download kyoosuk/LitePoSplat retention_r50_re10k.ckpt --local-dir checkpoints
 ```
-Note that here we show the evaluation using the mixed model trained on RealEstate10K and DL3DV. You can replace the checkpoint path with other trained models.
+
+## Evaluation
+
+Copy [`config/experiment_runs/retention_suite.yaml`](config/experiment_runs/retention_suite.yaml) to
+`my_settings.yaml` and set `data_root` and `output_root`. Each command prints its plan; `--execute` runs it.
+
+```bash
+# Ours 50% on the full test set (use --split test for the 500-scene subset)
+python scripts/run_retention.py --config my_settings.yaml eval-grid --split full \
+  --checkpoint checkpoints/retention_r50_re10k.ckpt \
+  --baselines none --scores r_filter --ratios 0.5 --run-id ours_r50 --execute
+```
+
+Metrics are written to `<output_root>/ours_r50/r_filter-r0.5-cell2/test_metrics.json`.
+Add `evaluation.save_image: true` to the settings to save renders.
+
+## Training
+
+Set `initial_checkpoint` to the base checkpoint and fine-tune with retention (10K steps, one GPU):
+
+```bash
+python scripts/run_retention.py --config my_settings.yaml train --prune --ratio 0.5 --run-id ours_r50 --execute
+```
+
+Rebuilding the base model, the ablations and every option: [docs/REPRODUCE.md](docs/REPRODUCE.md).
+
+## Tests
+
+```bash
+PYTHONPATH=tests python -m unittest discover -s tests
+```
+
+No GPU, data or checkpoint needed.
 
 ## Acknowledgements
-This project is developed with several fantastic repos: [pixelSplat](https://github.com/dcharatan/pixelsplat), [DUSt3R](https://github.com/naver/dust3r), and [CroCo](https://github.com/naver/croco). We thank the original authors for their excellent work.
-We thank the kindly help of [David Charatan](https://davidcharatan.com/#/) for providing the evaluation code and the pretrained models for some of the previous methods.
 
-## Citation
+Built on [NoPoSplat](https://github.com/cvg/NoPoSplat), which provides the backbone, data pipeline and pretrained
+checkpoint, and in turn on [pixelSplat](https://github.com/dcharatan/pixelsplat),
+[DUSt3R](https://github.com/naver/dust3r) and [CroCo](https://github.com/naver/croco).
 
-```
-@article{ye2024noposplat,
-      title   = {No Pose, No Problem: Surprisingly Simple 3D Gaussian Splats from Sparse Unposed Images},
-      author  = {Ye, Botao and Liu, Sifei and Xu, Haofei and Xueting, Li and Pollefeys, Marc and Yang, Ming-Hsuan and Songyou, Peng},
-      journal = {arXiv preprint arXiv:2410.24207},
-      year    = {2024}
-    }
-```
+## License
+
+[MIT](LICENSE). The base code is © 2024 Botao Ye.

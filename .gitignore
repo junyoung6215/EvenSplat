@@ -176,21 +176,21 @@ cython_debug/
 .bashrc
 /launcher_venv
 /slurm_logs
+# Model weights and large arrays never go to GitHub (checkpoints are on Hugging Face).
 *.torch
 *.ckpt
+*.pth
+*.pt
+*.safetensors
+*.bin
+*.npy
+*.npz
+/pretrained_weights/
 table.tex
 /baselines
 /test/*
 
-# Curated experiment records are intentionally small and GitHub-friendly.
-!experiment_records/
-!experiment_records/**
-!experiment_records/**/*.log
-experiment_records/**/*.ckpt
-experiment_records/**/*.torch
-experiment_records/**/*.pt
-experiment_records/**/*.pth
-experiment_records/**/*.npy
-experiment_records/**/*.npz
-experiment_records/**/*.mp4
-experiment_records/**/*.gif
+# Experiment records and result dumps stay outside the repository
+# (archived separately; reported numbers are in docs/METHOD.md).
+/experiment_records/
+/results/

@@ -35,22 +35,8 @@ def _load_module(name: str, path: Path):
 # Avoid replacing real src packages during collection of unrelated tests.
 _ensure_package("_olp_test_heads", HEADS)
 
-_load_module(
-    "_olp_test_heads.preconditioner_cfg",
-    HEADS / "preconditioner_cfg.py",
-)
-_load_module(
-    "_olp_test_heads.preconditioner_math",
-    HEADS / "preconditioner_math.py",
-)
-_load_module(
-    "_olp_test_heads.preconditioner_stats",
-    HEADS / "preconditioner_stats.py",
-)
-preconditioner = _load_module(
-    "_olp_test_heads.latent_preconditioner",
-    HEADS / "latent_preconditioner.py",
-)
+_load_module("_olp_test_heads.latent_stats", HEADS / "latent_stats.py")
+preconditioner = _load_module("_olp_test_heads.olp", HEADS / "olp.py")
 olp_stats = _load_module("_olp_test_stats", ROOT / "src/analysis/olp_stats.py")
 
 gaussian_tail_stats = olp_stats.gaussian_tail_stats

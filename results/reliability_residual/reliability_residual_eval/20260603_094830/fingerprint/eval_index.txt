@@ -1,1 +1,0 @@
-assets/evaluation_index_re10k.json

@@ -11,7 +11,7 @@ from torch import Tensor, nn
 from .encoder_noposplat import EncoderNoPoSplatCfg
 from .backbone.croco.misc import transpose_to_landscape
 from .heads import head_factory
-from .heads.preconditioner_utils import set_preconditioner_step
+from .heads.olp import set_preconditioner_step
 from ...dataset.shims.bounds_shim import apply_bounds_shim
 from ...dataset.shims.normalize_shim import apply_normalize_shim
 from ...dataset.shims.patch_shim import apply_patch_shim
@@ -21,7 +21,7 @@ from ..types import Gaussians
 from .backbone import Backbone, BackboneCfg, get_backbone
 from .common.gaussian_adapter import GaussianAdapter, GaussianAdapterCfg, UnifiedGaussianAdapter
 from .encoder import Encoder
-from .heads.reliability_cfg import opacity_reliability_gate
+from .heads.reliability import opacity_reliability_gate
 from .visualization.encoder_visualizer_epipolar_cfg import EncoderVisualizerEpipolarCfg
 
 

@@ -17,9 +17,8 @@ from einops import rearrange
 # import dust3r.utils.path_to_croco
 from .dpt_block import DPTOutputAdapter, Interpolate, make_fusion_block
 from .head_modules import UnetExtractor
-from .latent_preconditioner import build_latent_preconditioner
+from .olp import build_latent_preconditioner, cfg_get
 from .postprocess import postprocess
-from .preconditioner_cfg import cfg_get
 
 
 # class DPTOutputAdapter_fix(DPTOutputAdapter):

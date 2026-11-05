@@ -1,56 +1,55 @@
-# Runner settings, NOT a Hydra experiment. Relative paths are repository-relative.
-# Copy this file outside Git and change the paths before server experiments.
+# Settings for scripts/run_retention.py (runner settings, NOT a Hydra config).
+# Defaults reproduce the final method: 2x2 stratified retention with an r filter
+# (threshold 0.35) and 10K steps of pruning-aware fine-tuning.
+# Copy this file, change the paths, and pass it with --config.
+# Relative paths are repository-relative.
 data_root: /server/datasets/re10k
-initial_checkpoint: /server/checkpoints/olp_reliability.ckpt
-train_pairs: /server/manifests/train_pairs.json
-validation_index: /server/manifests/validation.json
-evaluation_index: /server/manifests/held_out_test.json
+# OLP-H + reliability head checkpoint (75K steps), the starting point of every run.
+initial_checkpoint: /server/checkpoints/noposplat-olp-rel-re10k/epoch_1-step_75000.ckpt
+# Fixed context/target indices, subsets of the official evaluation_index_re10k.json.
+validation_index: assets/evaluation_index_re10k_val64.json
+evaluation_index: assets/evaluation_index_re10k_test500.json
 output_root: /server/outputs/retention
 
 # Restricts each sequential subprocess to ONE GPU. May also be a GPU UUID.
 gpu: '0'
 seed: 111123
-olp_enabled: true
-olp_seed: 0
-olp_mix: 1.0
-reliability_enabled: true
-reliability_r_min: 0.05
+
+olp:
+  enabled: true
+  seed: 0
+  mix: 1.0
+reliability:
+  enabled: true
+  r_min: 0.05
+
+retention:
+  # Keep the budget ratio inside every cell_size x cell_size pixel cell.
+  # 0 = one global top-k over all Gaussians. --cell-size overrides it.
+  cell_size: 2
+  # r_filter score: drop Gaussians with reliability below this first, then
+  # fill the budget at random.
+  r_threshold: 0.35
 
 train:
-  finetune_scope: full  # Set heads for frozen-backbone fine-tuning.
-  # random: original NoPoSplat bounded pairs over the whole train split (train_pairs unused).
-  # fixed: train_pairs manifest; required by the prior arm.
-  sampler: random
-  steps: 5000
+  finetune_scope: full  # heads: freeze the Transformer, train the output heads.
+  steps: 10000
   batch_size: 1
-  accumulate: 1
-  workers: 0
+  accumulate: 4
+  workers: 4
   lr: 0.00002
   backbone_lr_multiplier: 0.1
   validation_interval: 500
   # Optional training-validation videos; independent of evaluation.save_image.
   validation_videos: false
   checkpoint_interval: 500
-  loss_warmup_start: 500
-  loss_warmup_end: 1500
-  legacy_weight: 0.0001
-  prior_weight: 0.001
-
-local:
-  cell_size: 16
-  detail_strength: 1.0
-  min_per_cell: 0
 
 evaluation:
-  scores: [random, base_opacity, opacity, reliability]
+  scores: [random, opacity, reliability, r_filter]
   ratios: [0.25, 0.5, 0.75]
   align_pose: true
   pose_align_steps: 100
   save_image: false
-
-# Only needed for train --arm prior. Never run a teacher online.
-# Actual teacher adapter and real cache generation remain server work.
-prior:
-  root: null
-  teacher_id: ''
-  teacher_settings_id: ''
+  # Also write per-scene metrics and statistics (olp_stats_per_scene.csv),
+  # e.g. to find failure cases.
+  per_scene_stats: false

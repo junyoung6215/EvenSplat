@@ -1,4 +1,4 @@
-"""Always check YAML contracts; compose real Hydra presets when installed.
+"""YAML contracts and typed config loading for the retention preset.
 
 No checkpoint, dataset, model construction or GPU execution is required.
 """
@@ -12,8 +12,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from _test_support import require_test_dependencies
-from test_prior_retention import prior_loss_classes
+from _test_support import annotation_only_jaxtyping, require_test_dependencies
 
 
 class LossConfigContractTests(unittest.TestCase):
@@ -25,61 +24,37 @@ class LossConfigContractTests(unittest.TestCase):
                                  "Loss files must wrap fields under their loss name, not loss.enabled/weight.")
                 self.assertIsInstance(payload[path.stem], dict)
 
-    def test_prior_yaml_matches_actual_dataclass_fields_and_defaults(self):
-        payload = yaml.safe_load((ROOT / "config/loss/reliability_prior.yaml").read_text(encoding="utf-8"))
-        cls = prior_loss_classes()["LossReliabilityPriorCfg"]
-        self.assertEqual(set(payload["reliability_prior"]), {field.name for field in fields(cls)})
-        self.assertEqual(cls(**payload["reliability_prior"]), cls())
 
-    def test_experiment_overrides_keep_same_loss_namespace(self):
-        for name in ("retention_prior", "retention_control", "retention_mock"):
-            with self.subTest(preset=name):
-                payload = yaml.safe_load((ROOT / f"config/experiment/{name}.yaml").read_text(encoding="utf-8"))
-                self.assertEqual(set(payload["loss"]), {"reliability_prior"})
+class RetentionConfigContractTests(unittest.TestCase):
+    def test_main_yaml_lists_every_retention_field_with_its_default(self):
+        with annotation_only_jaxtyping():
+            from src.model.retention import GaussianRetentionCfg
+        main = yaml.safe_load((ROOT / "config/main.yaml").read_text(encoding="utf-8"))
+        payload = main["model"]["gaussian_retention"]
+        self.assertEqual(set(payload), {field.name for field in fields(GaussianRetentionCfg)})
+        self.assertEqual(GaussianRetentionCfg(**payload), GaussianRetentionCfg())
 
 
 class HydraRetentionConfigTests(unittest.TestCase):
     def setUp(self):
-        require_test_dependencies("hydra", "omegaconf")
+        require_test_dependencies("hydra", "omegaconf", "lightning", "dacite", "diff_gaussian_rasterization")
 
-    def compose(self, name):
+    def compose(self, *overrides):
         from hydra import compose, initialize_config_dir
         with initialize_config_dir(config_dir=str(ROOT / "config"), version_base=None):
             return compose(config_name="main", overrides=[
-                f"+experiment={name}", "model.encoder.pretrained_weights=unused.ckpt",
-                "dataset.re10k.view_sampler.index_path=unused_train_pairs.json",
-            ])
+                "+experiment=retention", "model.encoder.pretrained_weights=unused.ckpt", *overrides])
 
-    def assert_loss_contract(self, cfg):
-        from omegaconf import OmegaConf
-        self.assertEqual(set(cfg.loss), {"mse", "lpips", "reliability_prior"})
-        cls = prior_loss_classes()["LossReliabilityPriorCfg"]
-        return cls(**OmegaConf.to_container(cfg.loss.reliability_prior, resolve=True))
-
-    def test_prior_preset_composes_with_complete_loss(self):
-        cfg = self.compose("retention_prior")
-        loss = self.assert_loss_contract(cfg)
-        self.assertTrue(loss.enabled)
-        self.assertEqual(loss.weight, .001)
-        self.assertFalse(loss.allow_mock)
-        self.assertEqual(cfg.dataset.re10k.view_sampler.name, "fixed_pairs")
+    def test_preset_composes_and_loads_typed(self):
+        from src.config import load_typed_root_config
+        cfg = self.compose("model.gaussian_retention.enabled=true")
+        self.assertEqual(set(cfg.loss), {"mse", "lpips"})
         self.assertFalse(cfg.train.validation_videos)
-
-    def test_control_preset_disables_prior(self):
-        cfg = self.compose("retention_control")
-        loss = self.assert_loss_contract(cfg)
-        self.assertFalse(loss.enabled)
-        self.assertFalse(cfg.dataset.re10k.foundation_prior.enabled)
-        self.assertFalse(cfg.train.validation_videos)
-
-    def test_mock_preset_keeps_diagnostic_flags_and_warmup(self):
-        cfg = self.compose("retention_mock")
-        loss = self.assert_loss_contract(cfg)
-        self.assertTrue(loss.enabled)
-        self.assertTrue(loss.allow_mock)
-        self.assertEqual((loss.warmup_start, loss.warmup_end), (0, 0))
-        self.assertTrue(cfg.dataset.re10k.foundation_prior.allow_mock)
-        self.assertFalse(cfg.train.validation_videos)
+        typed = load_typed_root_config(cfg)
+        retention = typed.model.gaussian_retention
+        self.assertTrue(retention.enabled)
+        self.assertEqual((retention.score_source, retention.cell_size, retention.r_threshold),
+                         ("r_filter", 2, 0.35))
 
 
 if __name__ == "__main__":
