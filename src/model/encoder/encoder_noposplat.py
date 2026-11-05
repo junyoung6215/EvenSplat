@@ -19,9 +19,8 @@ from ..types import Gaussians
 from .backbone import Backbone, BackboneCfg, get_backbone
 from .common.gaussian_adapter import GaussianAdapter, GaussianAdapterCfg, UnifiedGaussianAdapter
 from .encoder import Encoder
-from .heads.preconditioner_cfg import OrthogonalPreconditionerCfg
-from .heads.preconditioner_utils import set_preconditioner_step
-from .heads.reliability_cfg import (
+from .heads.olp import OrthogonalPreconditionerCfg, set_preconditioner_step
+from .heads.reliability import (
     GaussianReliabilityCfg,
     opacity_reliability_gate,
 )

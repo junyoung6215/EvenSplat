@@ -13,7 +13,8 @@ sys.path.insert(0, str(ROOT))
 
 from _test_support import add_function_tests, require_test_dependencies
 
-require_test_dependencies("jaxtyping", "beartype", direct_run=__name__ == "__main__")
+require_test_dependencies("jaxtyping", "beartype", "diff_gaussian_rasterization",
+                          direct_run=__name__ == "__main__")
 from jaxtyping import install_import_hook
 
 with install_import_hook(
@@ -27,7 +28,7 @@ with install_import_hook(
         validate_reliability_loss_encoder,
     )
     from src.model.decoder.decoder import DecoderOutput
-    from src.model.encoder.heads.reliability_cfg import opacity_reliability_gate
+    from src.model.encoder.heads.reliability import opacity_reliability_gate
     from src.model.types import Gaussians
 
 

@@ -1,9 +1,5 @@
-> OLP-H capstone experiment docs:
-> [Korean README](README_OLP_H_KO.md),
-> [Korean experiment protocol](docs/OLP_H_EXPERIMENT_PROTOCOL_KO.md),
-> [English README](README_OLP_H_EN.md),
-> [Korean diff report](docs/OLP_H_DIFF_REPORT_KO.md),
-> [English diff report](docs/OLP_H_DIFF_REPORT_EN.md).
+> Compact feed-forward 3DGS on NoPoSplat (OLP-H, reliability head, stratified retention):
+> [method and results](docs/METHOD.md), [reproduction](docs/REPRODUCE.md).
 
 <p align="center">
   <h2 align="center">No Pose, No Problem <img src="https://noposplat.github.io/static/images/icon.svg" width="20" style="position: relative; top: 1px;"> <br> Surprisingly Simple 3D Gaussian Splats from Sparse Unposed Images</h2>

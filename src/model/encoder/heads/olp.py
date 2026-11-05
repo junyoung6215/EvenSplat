@@ -1,14 +1,61 @@
+"""OLP-H: a fixed randomized Hadamard preconditioner on the Gaussian-head latent.
+
+Contains the config, the fast Walsh-Hadamard transform, the module and the
+helper that forwards the training step to it.
+"""
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any
 
 import torch
 from torch import Tensor, nn
 
-from .preconditioner_cfg import cfg_get
-from .preconditioner_math import fwht_last_dim, is_power_of_two
-from .preconditioner_stats import channel_outlier_maps, channel_outlier_top_locations, summarize_latent_pair
+from .latent_stats import channel_outlier_maps, channel_outlier_top_locations, summarize_latent_pair
+
+
+@dataclass
+class OrthogonalPreconditionerCfg:
+    enabled: bool = False
+    mode: str = "hadamard"
+    dim: int = 256
+    mix: float = 0.0
+    target_mix: float = 1.0
+    warmup_steps: int = 5000
+    seed: int = 0
+    collect_stats: bool = False
+
+
+def cfg_get(cfg: Any, name: str, default: Any) -> Any:
+    """Read config fields from dataclasses, OmegaConf nodes, or plain dicts."""
+    if cfg is None:
+        return default
+    if isinstance(cfg, dict):
+        return cfg.get(name, default)
+    return getattr(cfg, name, default)
+
+
+def is_power_of_two(value: int) -> bool:
+    return value > 0 and (value & (value - 1)) == 0
+
+
+def fwht_last_dim(x: Tensor) -> Tensor:
+    """Unnormalized Fast Walsh-Hadamard Transform on the last dimension."""
+    n = x.shape[-1]
+    if not is_power_of_two(n):
+        raise ValueError(f"FWHT requires power-of-two dimension, got {n}.")
+
+    y = x
+    prefix = x.shape[:-1]
+    h = 1
+    while h < n:
+        y = y.reshape(*prefix, -1, h * 2)
+        left = y[..., :h]
+        right = y[..., h : 2 * h]
+        y = torch.cat((left + right, left - right), dim=-1)
+        h *= 2
+    return y.reshape_as(x)
 
 
 class RandomizedHadamardPreconditioner(nn.Module):
@@ -144,3 +191,13 @@ def build_latent_preconditioner(cfg: Any, dim: int = 256) -> nn.Module:
         seed=int(cfg_get(cfg, "seed", 0)),
         collect_stats=bool(cfg_get(cfg, "collect_stats", False)),
     )
+
+
+def set_preconditioner_step(root: nn.Module, global_step: int) -> None:
+    """Propagate a training/eval step to modules that expose set_step()."""
+    for module in root.modules():
+        if module is root:
+            continue
+        set_step = getattr(module, "set_step", None)
+        if callable(set_step):
+            set_step(global_step)
