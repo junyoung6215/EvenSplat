@@ -23,8 +23,9 @@ Evaluation uses three RE10K index files:
 | `assets/evaluation_index_re10k_val64.json` | 64 | Validation during fine-tuning (`--split validation`) |
 | `assets/evaluation_index_re10k_test500.json` | 500 | Quick held-out check (`--split test`) |
 
-The two subsets were split from the official index without overlap, so
-`--split full` overlaps them by design.
+The subsets are the first 64 valid scenes of the official index and the next
+500 (`scripts/make_eval_subset.py --count 64`, then `--start 64 --count 500`),
+so `--split full` overlaps them by design.
 
 ## 2. Base model (OLP-H + reliability head)
 
@@ -48,8 +49,7 @@ DATA_ROOT=/path/to/re10k \
 ## 3. Final method: stratified retention + r filter + pruning-aware FT
 
 Copy `config/experiment_runs/retention_suite.yaml`, set `data_root`,
-`initial_checkpoint` (the stage 2 checkpoint), the two index paths and
-`output_root`. Its defaults are the final method: 2 × 2 cells, r threshold
+`initial_checkpoint` (the stage 2 checkpoint) and `output_root`. Its defaults are the final method: 2 × 2 cells, r threshold
 0.35, 10K steps, batch 1 with 4-step gradient accumulation, lr 2e-5, 4 data workers.
 
 Every command prints the planned jobs and stops; add `--execute` to run them.

@@ -6,9 +6,9 @@
 data_root: /server/datasets/re10k
 # OLP-H + reliability head checkpoint (75K steps), the starting point of every run.
 initial_checkpoint: /server/checkpoints/noposplat-olp-rel-re10k/epoch_1-step_75000.ckpt
-# Fixed context/target indices in the evaluation_index_re10k.json format.
-validation_index: /server/manifests/validation_64.json
-evaluation_index: /server/manifests/test_500.json
+# Fixed context/target indices, subsets of the official evaluation_index_re10k.json.
+validation_index: assets/evaluation_index_re10k_val64.json
+evaluation_index: assets/evaluation_index_re10k_test500.json
 output_root: /server/outputs/retention
 
 # Restricts each sequential subprocess to ONE GPU. May also be a GPU UUID.
