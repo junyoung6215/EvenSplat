@@ -30,7 +30,7 @@ class TestImportIsolation(unittest.TestCase):
             self.assertIs(sys.modules.get("jaxtyping"), before)
 
     def test_tensor_tests_collect_in_both_orders_without_fake_package_leaks(self):
-        names = ("test_gaussian_retention", "test_local_cell_retention", "test_olp_preconditioner")
+        names = ("test_retention", "test_olp_preconditioner")
         for order in (names, names[::-1]):
             before = {name: sys.modules.get(name) for name in ("src.model.encoder", "src.model.encoder.heads")}
             for name in order:
@@ -41,8 +41,7 @@ class TestImportIsolation(unittest.TestCase):
                 self.assertIs(sys.modules.get(name), value)
 
     def test_unittest_collects_existing_function_tests(self):
-        for name, count in (("test_gaussian_retention", 20), ("test_local_cell_retention", 13),
-                            ("test_olp_preconditioner", 11)):
+        for name, count in (("test_olp_preconditioner", 11),):
             module = importlib.import_module(name)
             self.assertEqual(unittest.defaultTestLoader.loadTestsFromModule(module).countTestCases(), count)
 

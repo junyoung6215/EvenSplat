@@ -113,7 +113,6 @@ class ValidationVideoTests(unittest.TestCase):
                 obj = cls()
                 obj.global_rank, obj.global_step = 1, 500
                 obj.data_shim = lambda b: b
-                obj._prepare_anchorgeo_batch = lambda b, *a: b
                 obj.distiller = obj.encoder_visualizer = None
                 obj.train_cfg = SimpleNamespace(validation_videos=enabled, extended_visualization=True)
                 obj.log, obj.logger = Mock(), SimpleNamespace(log_image=Mock())
@@ -193,9 +192,9 @@ class ValidationVideoTests(unittest.TestCase):
 class ValidationVideoConfigTests(unittest.TestCase):
     def test_legacy_default_preserved_and_retention_presets_opt_out(self):
         main = yaml.safe_load((ROOT / "config/main.yaml").read_text(encoding="utf-8"))
-        prior = yaml.safe_load((ROOT / "config/experiment/retention_prior.yaml").read_text(encoding="utf-8"))
+        preset = yaml.safe_load((ROOT / "config/experiment/retention.yaml").read_text(encoding="utf-8"))
         self.assertTrue(main["train"]["validation_videos"])
-        self.assertFalse(prior["train"]["validation_videos"])
+        self.assertFalse(preset["train"]["validation_videos"])
         self.assertTrue(main["test"]["align_pose"])
         tree = ast.parse((ROOT / "src/model/model_wrapper.py").read_text(encoding="utf-8"))
         cfg = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "TrainCfg")

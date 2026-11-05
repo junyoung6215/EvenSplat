@@ -1,16 +1,15 @@
 # @package _global_
-# New pilot, fresh optimizer/step count, initialized from an existing encoder.
+# Pruning-aware fine-tuning and retention evaluation of the OLP-H + reliability
+# model. scripts/run_retention.py fills in paths, schedule and retention settings.
 defaults:
-  - /dataset@_group_.re10k: re10k_fixed
+  - /dataset@_group_.re10k: re10k
   - override /model/encoder: noposplat
   - override /model/encoder/backbone: croco
-  - override /loss: [mse, lpips, reliability_prior]
+  - override /loss: [mse, lpips]
 
 wandb:
-  name: retention_prior_pilot
+  name: retention
 model:
-  anchor_selection:
-    enabled: false
   encoder:
     gs_params_head_type: dpt_gs
     pose_free: true
@@ -30,22 +29,10 @@ model:
     make_scale_invariant: true
   gaussian_retention:
     enabled: false
-    score_source: reliability
+    score_source: r_filter
     keep_ratio: 0.5
-    local_cells:
-      enabled: false
-      demand_source: image_detail
-      detail_strength: 1.0
-dataset:
-  re10k:
-    foundation_prior:
-      enabled: true
-      root: ???
-      teacher_id: ???
-      teacher_settings_id: ???
-loss:
-  reliability_prior:
-    enabled: true
+    cell_size: 2
+    r_threshold: 0.35
 train:
   # Scalar metrics and comparison images remain enabled. Videos are opt-in.
   validation_videos: false

@@ -1,7 +1,7 @@
 defaults:
   - model/encoder: noposplat
   - model/decoder: splatting_cuda
-  - loss: [mse, geo]
+  - loss: [mse]
 
 wandb:
   project: noposplat
@@ -12,62 +12,31 @@ wandb:
 mode: train
 
 model:
-  anchor_selection:
-    enabled: false
-    method: none
-    apply_to: test
-    renormalize_cameras: true
-    allow_unsafe_reorder: false
-    debug_save_scores: false
-    vggt_cache_root: null
-    score_weights:
-      overlap: 1.0
-      confidence: 0.5
-      blur: 0.1
-
   # Optional pre-render Gaussian selection. With enabled=false, this path is
   # not entered and the original NoPoSplat tensors are passed through exactly.
   gaussian_retention:
     enabled: false
     apply_during_train: true
     apply_during_eval: true
-    # opacity | base_opacity | reliability | random | reliability_filtered | grid | external
-    # grid: fixed Bayer-ordered pixel positions per local cell (stride-2 / checkerboard on 2x2).
+    # opacity | base_opacity | reliability | random | r_filter | grid
+    # r_filter: drop Gaussians with reliability below r_threshold first, rest at random.
+    # grid: fixed Bayer-ordered pixel positions in every cell (needs cell_size > 0).
     score_source: opacity
-    external_score_key: retention_score
+    keep_ratio: 0.5
+    # 0: one global top-k. >0: keep keep_ratio of every cell_size x cell_size cell.
+    cell_size: 0
+    r_threshold: 0.5
     random_seed: 0
-    # reliability_filtered: drop Gaussians below this reliability first, rest at random.
-    reliability_floor: 0.5
-    # >0: during training, push reliability outside the budget toward r_min, inside toward 1.
-    budget_weight: 0.0
-    # true: ramp budget_weight from 0 over the soft phase (before start_step).
-    budget_warmup: false
-    # Budget weight multiplier once hard pruning starts.
-    budget_hard_scale: 1.0
     # >0: each training step keeps a ratio drawn from [train_keep_ratio_min, keep_ratio].
     train_keep_ratio_min: 0.0
-    # fixed_ratio | fixed_count | elastic
-    mode: fixed_ratio
-    keep_ratio: 0.5
-    keep_count: null
-    threshold: 0.5
-    max_gaussians: null
+    # Training steps that render all Gaussians before pruning starts.
     start_step: 0
+    # Learned-r ablation: push r outside the budget toward r_min, inside toward 1.
+    budget_weight: 0.0
+    budget_warmup: false
+    budget_hard_scale: 1.0
     log_diagnostics: true
     diagnostics_every_n_steps: 100
-    local_cells:
-      enabled: false
-      cell_size: 16
-      demand_key: cell_demand
-      demand_source: external
-      detail_strength: 1.0
-      demand_floor: 0.0
-      # 0: pure global competition, 1: reserve the best Gaussian per cell.
-      min_per_cell: 0
-      # true: keep keep_ratio of every cell (score ranks only inside a cell).
-      stratified: false
-      # true: fold dropped Gaussians into the nearest kept one of their cell.
-      merge: false
 
 #dataset:
 #  overfit_to_scene: null
@@ -111,16 +80,6 @@ train:
   distiller: ''
   distill_max_steps: 1000000
 
-debug:
-  anchor:
-    enabled: false
-    output_dir: debug_anchor
-    save_first_n_batches: 4
-  geo:
-    enabled: false
-    output_dir: debug_geo
-    save_first_n_batches: 4
-
 test:
   output_path: outputs/test
   align_pose: true
@@ -136,8 +95,6 @@ test:
   olp_tau_scale: null
   olp_tau_volume: null
   olp_adaptive_tau_scale_quantile: 0.95
-  save_gaussian_cap_stats: false
-  gaussian_cap_ratios: null
   olp_raw_dump: false
   olp_raw_dump_max_locations: 256
   olp_raw_dump_full_maps: false

@@ -23,12 +23,9 @@ class RetentionRunnerTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.cfg = runner.read_settings(runner.TEMPLATE)
         self.cfg.update(data_root=str(self.root), output_root=str(self.root / "runs"))
-        self.cfg["train"]["sampler"] = "fixed"  # most tests below cover the fixed-pair path
-        for key in ("initial_checkpoint", "train_pairs", "validation_index", "evaluation_index"):
+        for key in ("initial_checkpoint", "validation_index", "evaluation_index"):
             self.cfg[key] = str(self.root / (key + ".json"))
         Path(self.cfg["initial_checkpoint"]).write_bytes(b"FAKE checkpoint: never loaded")
-        self.write("train_pairs", {"schema_version": 1, "split": "train", "pairs": [
-            {"scene": "train_scene", "context": [0, 10], "target": [5]}]})
         self.write("validation_index", {"val_scene": {"context": [0, 10], "target": [5]}})
         self.write("evaluation_index", {"test_scene": {"context": [0, 10], "target": [5]}})
 
@@ -40,62 +37,61 @@ class RetentionRunnerTests(unittest.TestCase):
 
     def values(self, job):
         return {k: json.loads(v) for arg in job["argv"][5:] if "=" in arg
-                for k, v in [arg.split("=", 1)] if k != "loss" and "@" not in k}
+                for k, v in [arg.split("=", 1)]}
 
     def test_train_resets_optimizer_and_saves_full_checkpoint(self):
         p = self.plan("train")
-        v = self.values(p["jobs"][0])
+        job = p["jobs"][0]
+        v = self.values(job)
+        self.assertEqual(job["argv"][4], "+experiment=retention")
         self.assertIsNone(v["checkpointing.load"])
         self.assertEqual(v["model.encoder.pretrained_weights"], Path(self.cfg["initial_checkpoint"]).as_posix())
         self.assertFalse(v["checkpointing.save_weights_only"])
         self.assertFalse(v["model.gaussian_retention.enabled"])
+        self.assertEqual(job["name"], "full")
 
-    def test_loss_arms_share_inputs_and_schedule(self):
-        self.cfg["prior"].update(root=str(self.root), teacher_id="real", teacher_settings_id="v1")
-        plans = [self.plan("train", "--arm", arm) for arm in ("control", "legacy", "prior")]
-        for key in ("dataset.re10k.roots", "dataset.re10k.view_sampler.index_path",
-                    "model.encoder.pretrained_weights", "trainer.max_steps", "optimizer.lr", "seed"):
-            self.assertEqual(len({str(self.values(p["jobs"][0])[key]) for p in plans}), 1)
-        legacy = plans[1]["jobs"][0]["argv"]
-        self.assertIn("loss=[mse,lpips,reliability]", legacy)
-        self.assertIn("~loss.reliability_prior", legacy)
-        prior = self.values(plans[2]["jobs"][0])
-        self.assertEqual(prior["loss.reliability_prior.warmup_start"], 500)
-
-    def test_random_sampler_uses_bounded_pairs_without_manifest(self):
-        self.cfg["train"]["sampler"] = "random"
-        Path(self.cfg["train_pairs"]).unlink()
+    def test_final_method_defaults(self):
         p = self.plan("train", "--prune")
-        argv, v = p["jobs"][0]["argv"], self.values(p["jobs"][0])
-        self.assertIn("dataset@dataset.re10k=re10k", argv)
-        self.assertNotIn("dataset.re10k.view_sampler.index_path", v)
+        v = self.values(p["jobs"][0])
+        self.assertEqual(p["jobs"][0]["name"], "pruned")
+        self.assertTrue(v["model.gaussian_retention.enabled"])
+        self.assertEqual(v["model.gaussian_retention.score_source"], "r_filter")
+        self.assertEqual(v["model.gaussian_retention.r_threshold"], 0.35)
+        self.assertEqual(v["model.gaussian_retention.cell_size"], 2)
+        self.assertEqual(v["model.gaussian_retention.keep_ratio"], 0.5)
+        self.assertEqual(v["trainer.max_steps"], 10000)
+        self.assertEqual(v["trainer.accumulate_grad_batches"], 4)
         self.assertEqual(v["dataset.re10k.view_sampler.warm_up_steps"], 0)
         self.assertEqual(v["dataset.re10k.view_sampler.evaluation_index_path"],
                          Path(self.cfg["validation_index"]).resolve().as_posix())
-        self.assertEqual(p["training"]["sampler"], "random")
-        runner.preflight(p)  # no train_pairs file needed
-        eval_argv = self.plan("eval-grid")["jobs"][0]["argv"]
-        self.assertNotIn("dataset@dataset.re10k=re10k", eval_argv)
-        self.cfg["prior"].update(root=str(self.root), teacher_id="real", teacher_settings_id="v1")
+
+    def test_cell_size_override_and_global_top_k(self):
+        v = self.values(self.plan("train", "--prune", "--cell-size", "0")["jobs"][0])
+        self.assertEqual(v["model.gaussian_retention.cell_size"], 0)
+        p = self.plan("eval-grid", "--scores", "reliability", "--ratios", ".5", "--baselines", "none",
+                      "--cell-size", "4")
+        self.assertEqual([j["name"] for j in p["jobs"]], ["reliability-r0.5-cell4"])
         with self.assertRaises(ValueError):
-            self.plan("train", "--arm", "prior")
+            self.plan("eval-grid", "--scores", "grid", "--cell-size", "0")
+        with self.assertRaises(ValueError):
+            self.plan("train", "--cell-size", "-1")
 
     def test_training_scope_defaults_and_cli_overrides(self):
         self.assertEqual(self.values(self.plan("train")["jobs"][0])["train.finetune_scope"], "full")
         self.cfg["train"]["finetune_scope"] = "heads"
-        p = self.plan("train", "--accumulate", "4", "--steps", "2000")
+        p = self.plan("train", "--accumulate", "2", "--steps", "2000")
         v = self.values(p["jobs"][0])
         self.assertEqual(v["train.finetune_scope"], "heads")
-        self.assertEqual(v["trainer.accumulate_grad_batches"], 4)
-        self.assertEqual(p["training"], dict(finetune_scope="heads", accumulate=4,
-                                           effective_batch_size=4, optimizer_steps=2000, sampler="fixed"))
-        self.assertEqual(self.cfg["train"]["accumulate"], 1)  # no settings mutation
+        self.assertEqual(v["trainer.accumulate_grad_batches"], 2)
+        self.assertEqual(p["training"], dict(finetune_scope="heads", accumulate=2,
+                                           effective_batch_size=2, optimizer_steps=2000))
+        self.assertEqual(self.cfg["train"]["accumulate"], 4)  # no settings mutation
         self.assertEqual(self.values(self.plan("train", "--train-scope", "full")["jobs"][0])["train.finetune_scope"], "full")
         self.assertIsNone(self.plan("eval-grid")["training"])
 
     def test_scope_ablation_changes_only_scope_and_run_directory(self):
-        a = self.values(self.plan("train", "--train-scope", "heads", "--prune", "--accumulate", "4")["jobs"][0])
-        b = self.values(self.plan("train", "--train-scope", "full", "--prune", "--accumulate", "4")["jobs"][0])
+        a = self.values(self.plan("train", "--train-scope", "heads", "--prune")["jobs"][0])
+        b = self.values(self.plan("train", "--train-scope", "full", "--prune")["jobs"][0])
         self.assertEqual({k for k in a if a[k] != b[k]}, {"train.finetune_scope", "hydra.run.dir", "test.output_path"})
 
     def test_invalid_training_scope_or_accumulation_rejected(self):
@@ -106,14 +102,6 @@ class RetentionRunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.plan("train")
 
-    def test_finetune_and_matched_continuation(self):
-        a = self.values(self.plan("train", "--prune", "--local", "--steps", "1000")["jobs"][0])
-        b = self.values(self.plan("train", "--steps", "1000")["jobs"][0])
-        self.assertTrue(a["model.gaussian_retention.enabled"])
-        self.assertTrue(a["model.gaussian_retention.local_cells.enabled"])
-        self.assertEqual(a["trainer.max_steps"], b["trainer.max_steps"])
-        self.assertEqual(a["model.encoder.pretrained_weights"], b["model.encoder.pretrained_weights"])
-
     def test_default_grid_is_12_conditions_plus_two_identity_checks(self):
         p = self.plan("eval-grid")
         self.assertEqual(len(p["jobs"]), 14)
@@ -121,56 +109,50 @@ class RetentionRunnerTests(unittest.TestCase):
         self.assertEqual(p["split"], "validation")
         self.assertEqual(self.values(p["jobs"][0])["model.encoder.pretrained_weights"], "")
 
-    def test_local_pairing_and_test_index(self):
-        p = self.plan("eval-grid", "--scores", "reliability", "--ratios", ".5", "--local", "both", "--split", "test")
-        self.assertEqual(len(p["jobs"]), 4)
-        self.assertEqual([j["local"] for j in p["jobs"][-2:]], [False, True])
+    def test_test_and_full_splits_and_baseline_selection(self):
+        p = self.plan("eval-grid", "--split", "test")
         self.assertEqual(p["index"], str(Path(self.cfg["evaluation_index"]).resolve()))
-
-    def test_full_split_and_baseline_selection(self):
         p = self.plan("eval-grid", "--split", "full", "--baselines", "none",
-                      "--scores", "reliability", "--ratios", ".5", "--local", "on")
+                      "--scores", "r_filter", "--ratios", ".5")
         self.assertEqual(p["index"], str(runner.local_path(runner.FULL_TEST_INDEX)))
-        self.assertEqual([j["name"] for j in p["jobs"]], ["reliability-r0.5-local1"])
+        self.assertEqual([j["name"] for j in p["jobs"]], ["r_filter-r0.5-cell2"])
         p = self.plan("eval-grid", "--baselines", "off", "--scores")
         self.assertEqual([j["name"] for j in p["jobs"]], ["baseline-off"])
         with self.assertRaises(ValueError):
             self.plan("eval-grid", "--baselines", "none", "--scores")
 
-    def test_rejects_invalid_or_ineffective_options(self):
-        for args in (("train", "--local"), ("train", "--arm", "prior"),
-                     ("train", "--steps", "0"), ("train", "--run-id", "../escape"),
+    def test_rejects_invalid_options(self):
+        for args in (("train", "--steps", "0"), ("train", "--run-id", "../escape"),
                      ("eval-grid", "--ratios", "0"), ("eval-grid", "--ratios", "nan"),
                      ("eval-grid", "--ratios", ".5", ".5")):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 self.plan(*args)
 
     def test_budget_loss_sets_weight_and_soft_phase(self):
-        v = self.values(self.plan("train", "--prune", "--local", "--score", "reliability",
+        v = self.values(self.plan("train", "--prune", "--score", "reliability",
                                   "--budget-weight", ".05", "--soft-steps", "1000")["jobs"][0])
         self.assertEqual(v["model.gaussian_retention.budget_weight"], .05)
         self.assertEqual(v["model.gaussian_retention.start_step"], 1000)
         self.assertFalse(v["model.gaussian_retention.budget_warmup"])
         self.assertEqual(v["model.gaussian_retention.budget_hard_scale"], 1.0)
-        v = self.values(self.plan("train", "--prune", "--local", "--score", "reliability",
+        v = self.values(self.plan("train", "--prune", "--score", "reliability",
                                   "--budget-weight", ".01", "--soft-steps", "1000",
                                   "--budget-warmup", "--budget-hard-scale", ".1")["jobs"][0])
         self.assertTrue(v["model.gaussian_retention.budget_warmup"])
         self.assertEqual(v["model.gaussian_retention.budget_hard_scale"], .1)
         self.assertEqual(v["model.gaussian_retention.train_keep_ratio_min"], 0.0)
-        v = self.values(self.plan("train", "--prune", "--local", "--score", "reliability_filtered",
-                                  "--ratio", "1", "--ratio-min", ".25")["jobs"][0])
+        v = self.values(self.plan("train", "--prune", "--ratio", "1", "--ratio-min", ".25")["jobs"][0])
         self.assertEqual(v["model.gaussian_retention.train_keep_ratio_min"], .25)
         self.assertEqual(v["model.gaussian_retention.keep_ratio"], 1.0)
-        for args in (("--budget-weight", ".05"), ("--prune", "--local", "--score", "random",
-                     "--budget-weight", ".05"), ("--prune", "--local", "--budget-weight", "-1"),
-                     ("--prune", "--local", "--budget-weight", ".01", "--budget-warmup"),
+        for args in (("--budget-weight", ".05"), ("--prune", "--score", "random",
+                     "--budget-weight", ".05"), ("--prune", "--budget-weight", "-1"),
+                     ("--prune", "--score", "reliability", "--budget-weight", ".01", "--budget-warmup"),
                      ("--ratio-min", ".25"), ("--prune", "--ratio", ".5", "--ratio-min", ".75")):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 self.plan("train", *args)
 
     def test_disabled_reliability_cannot_rank_by_reliability(self):
-        self.cfg["reliability_enabled"] = False
+        self.cfg["reliability"]["enabled"] = False
         with self.assertRaises(ValueError):
             self.plan("eval-grid")
         self.plan("eval-grid", "--scores", "opacity")
@@ -224,16 +206,12 @@ class RetentionRunnerTests(unittest.TestCase):
             execute.assert_not_called()
         self.assertFalse(Path(self.cfg["output_root"]).exists())
 
-    def test_preflight_blocks_data_leakage(self):
-        runner.preflight(self.plan("train"))
-        self.write("validation_index", {"train_scene": {"context": [0, 10], "target": [5]}})
-        with self.assertRaisesRegex(ValueError, "overlap"):
-            runner.preflight(self.plan("train"))
-
     def test_preflight_blocks_validation_test_overlap(self):
+        runner.preflight(self.plan("eval-grid"))
         self.write("evaluation_index", {"val_scene": {"context": [0, 10], "target": [5]}})
         with self.assertRaisesRegex(ValueError, "overlap"):
             runner.preflight(self.plan("eval-grid"))
+        runner.preflight(self.plan("eval-grid", "--split", "full"))  # official index overlaps by design
 
     def test_failure_stops_sweep_and_records_pending_jobs(self):
         plan = self.plan("eval-grid", "--scores", "opacity", "--ratios", ".5")
@@ -304,23 +282,17 @@ class HydraRunnerTests(unittest.TestCase):
         from hydra import compose, initialize_config_dir
         from omegaconf import OmegaConf
         cfg = runner.read_settings(runner.TEMPLATE)
-        cfg["prior"].update(root="unused", teacher_id="teacher", teacher_settings_id="v1")
-        variants = [("train", "--arm", a) for a in ("control", "legacy", "prior")]
-        variants += [("eval-grid",), ("train", "--prune", "--local")]
-        variants += [("train", "--train-scope", "heads", "--accumulate", "4")]
-        for sampler in ("fixed", "random"):
-          cfg["train"]["sampler"] = sampler
-          for args in variants:
-            if sampler == "random" and "prior" in args:
-                continue
+        variants = [("train",), ("train", "--prune"), ("eval-grid",),
+                    ("train", "--train-scope", "heads", "--accumulate", "2"),
+                    ("train", "--prune", "--score", "reliability", "--budget-weight", ".01",
+                     "--soft-steps", "100", "--budget-warmup")]
+        for args in variants:
             plan = runner.build_plan(cfg, runner.parser().parse_args(args))
             with self.subTest(args=args), initialize_config_dir(config_dir=str(ROOT / "config"), version_base=None):
                 composed = compose(config_name="main", overrides=plan["jobs"][0]["argv"][4:])
                 OmegaConf.to_container(composed, resolve=True, throw_on_missing=True)
-                expected = "bounded" if sampler == "random" and args[0] == "train" else "fixed_pairs"
-                self.assertEqual(composed.dataset.re10k.view_sampler.name, expected)
-                if "legacy" in args:
-                    self.assertEqual(set(composed.loss), {"mse", "lpips", "reliability"})
+                self.assertEqual(composed.dataset.re10k.view_sampler.name, "bounded")
+                self.assertEqual(set(composed.loss), {"mse", "lpips"})
 
 
 if __name__ == "__main__":
