@@ -42,6 +42,12 @@ default, and the default config reproduces NoPoSplat. Details: [docs/METHOD.md](
 
 RealEstate10K, 256 × 256, two context views, full test set (5,590 evaluable scenes).
 
+<p align="center">
+  <img src="docs/figures/psnr_vs_gaussians.png" alt="PSNR against the number of Gaussians for our model, our base and control, NoPoSplat, MVSplat, pixelSplat and ATSplat" width="55%">
+</p>
+<p align="center"><sub>Full RealEstate10K test set. *Reported in NoPoSplat. **Reported in ATSplat. Posed methods use ground-truth
+camera poses. <i>Control</i> is our base fine-tuned for the same 10K steps without pruning.</sub></p>
+
 | Model | #Gaussians | PSNR ↑ | SSIM ↑ | LPIPS ↓ |
 | --- | :-: | :-: | :-: | :-: |
 | pixelSplat* (posed) | 393K | 23.85 | 0.806 | 0.185 |
@@ -49,15 +55,10 @@ RealEstate10K, 256 × 256, two context views, full test set (5,590 evaluable sce
 | ATSplat** (posed, compact) | 23K | 26.70 | 0.861 | 0.146 |
 | NoPoSplat* | 131K | 25.03 | 0.838 | 0.160 |
 | Base (① + ②) | 131K | 24.84 | 0.824 | 0.163 |
+| Control (base + 10K FT, no pruning) | 131K | 25.45 | 0.842 | 0.155 |
 | **Ours 75%** | **98K** | **25.26** | **0.837** | **0.161** |
 | **Ours 50%** | **66K** | **25.01** | **0.829** | **0.169** |
 | **Ours 25%** | **33K** | **24.62** | **0.817** | **0.184** |
-
-<p align="center">
-  <img src="docs/figures/psnr_vs_gaussians.png" alt="PSNR against the number of Gaussians for our model, our base and control, NoPoSplat, MVSplat, pixelSplat and ATSplat" width="55%">
-</p>
-<p align="center"><sub>Full RealEstate10K test set. *Reported in NoPoSplat. **Reported in ATSplat. Posed methods use ground-truth
-camera poses. <i>Control</i> is our base fine-tuned for the same 10K steps without pruning.</sub></p>
 
 **Ablation** at 50% kept (full test set). Global top-k removes whole regions; stratified cells keep every region,
 and fine-tuning closes the remaining gaps.
@@ -88,6 +89,34 @@ conda activate noposplat-olp-cuda118
 ```
 
 Exact versions: [`env/environment-cuda118.yml`](env/environment-cuda118.yml).
+
+### Directory structure
+
+Data and checkpoints go under the repository root (both are git-ignored):
+
+```text
+capstone_project/
+├── src/
+│   ├── model/
+│   │   ├── encoder/heads/olp.py           # ① OLP-H
+│   │   ├── encoder/heads/reliability.py   # ② reliability head
+│   │   ├── retention/                     # ③ stratified retention, r filter
+│   │   └── model_wrapper.py               # ④ retention in training and evaluation
+│   ├── loss/loss_reliability.py           # ② context-residual loss
+│   └── experiment_runner/retention.py     # train / eval-grid / summarize
+├── config/                                # Hydra configs (all components off by default)
+│   └── experiment_runs/retention_suite.yaml   # runner settings for the final method
+├── scripts/                               # environment, data, run_retention.py
+├── assets/                                # evaluation indices
+├── docs/                                  # METHOD.md, REPRODUCE.md, figures
+├── tests/
+├── datasets/re10k/                        # setup_re10k_dataset.sh
+│   ├── train/*.torch, index.json
+│   └── test/*.torch, index.json
+├── checkpoints/                           # downloaded from Hugging Face
+│   └── retention_r{25,50,75}_re10k.ckpt
+└── pretrained_weights/re10k.ckpt          # NoPoSplat, only to rebuild the base model
+```
 
 ## Data
 
