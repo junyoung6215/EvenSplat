@@ -44,17 +44,20 @@ RealEstate10K, 256 × 256, two context views, full test set (5,590 evaluable sce
 
 | Model | #Gaussians | PSNR ↑ | SSIM ↑ | LPIPS ↓ |
 | --- | :-: | :-: | :-: | :-: |
-| NoPoSplat | 131K | 25.03 | 0.838 | 0.160 |
+| pixelSplat* (posed) | 393K | 23.85 | 0.806 | 0.185 |
+| MVSplat* (posed) | 131K | 23.98 | 0.811 | 0.176 |
+| ATSplat** (posed, compact) | 23K | 26.70 | 0.861 | 0.146 |
+| NoPoSplat* | 131K | 25.03 | 0.838 | 0.160 |
 | Base (① + ②) | 131K | 24.84 | 0.824 | 0.163 |
 | **Ours 75%** | **98K** | **25.26** | **0.837** | **0.161** |
 | **Ours 50%** | **66K** | **25.01** | **0.829** | **0.169** |
 | **Ours 25%** | **33K** | **24.62** | **0.817** | **0.184** |
 
 <p align="center">
-  <img src="docs/figures/quality_vs_gaussians.png" alt="PSNR and LPIPS against the number of rendered Gaussians on the 500-scene test subset" width="100%">
+  <img src="docs/figures/psnr_vs_gaussians.png" alt="PSNR against the number of Gaussians for our model, our base and control, NoPoSplat, MVSplat, pixelSplat and ATSplat" width="80%">
 </p>
-<p align="center"><sub>500-scene test subset. <i>Control</i> is the base fine-tuned for the same 10K steps without pruning
-(full test set: 25.45 / 0.842 / 0.155).</sub></p>
+<p align="center"><sub>Full RealEstate10K test set. *Reported in NoPoSplat. **Reported in ATSplat. Posed methods use ground-truth
+camera poses. <i>Control</i> is our base fine-tuned for the same 10K steps without pruning.</sub></p>
 
 **Ablation** at 50% kept (full test set). Global top-k removes whole regions; stratified cells keep every region,
 and fine-tuning closes the remaining gaps.
@@ -145,17 +148,6 @@ PYTHONPATH=tests python -m unittest discover -s tests
 ```
 
 No GPU, data or checkpoint needed.
-
-## Citation
-
-```bibtex
-@misc{hwang2026stratified,
-  title  = {Stratified Retention for Compact Pose-free Feed-forward 3D Gaussian Splatting},
-  author = {Hwang, Kyoosuk and Kwon, Junyoung},
-  year   = {2026},
-  note   = {Capstone Design project, Seoul National University of Science and Technology}
-}
-```
 
 ## Acknowledgements
 
