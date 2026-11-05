@@ -176,8 +176,16 @@ cython_debug/
 .bashrc
 /launcher_venv
 /slurm_logs
+# Model weights and large arrays never go to GitHub (checkpoints are on Hugging Face).
 *.torch
 *.ckpt
+*.pth
+*.pt
+*.safetensors
+*.bin
+*.npy
+*.npz
+/pretrained_weights/
 table.tex
 /baselines
 /test/*
