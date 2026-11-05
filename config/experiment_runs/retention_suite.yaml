@@ -50,3 +50,6 @@ evaluation:
   align_pose: true
   pose_align_steps: 100
   save_image: false
+  # Also write per-scene metrics and statistics (olp_stats_per_scene.csv),
+  # e.g. to find failure cases.
+  per_scene_stats: false

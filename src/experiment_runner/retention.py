@@ -96,7 +96,8 @@ def validate_settings(cfg):
                         ("reliability.enabled", cfg["reliability"]["enabled"]),
                         ("train.validation_videos", t["validation_videos"]),
                         ("evaluation.align_pose", e["align_pose"]),
-                        ("evaluation.save_image", e["save_image"])):
+                        ("evaluation.save_image", e["save_image"]),
+                        ("evaluation.per_scene_stats", e["per_scene_stats"])):
         if type(value) is not bool:
             raise ValueError(f"{name} must be a YAML boolean, not a string")
     nonnegative(t["lr"], "train.lr")
@@ -131,24 +132,10 @@ def validate_train_args(args):
         raise ValueError("--budget-weight/--soft-steps need --prune --score reliability")
 
 
-def build_plan(cfg, args):
-    """Build JSON-serializable jobs without touching disk or loading a checkpoint."""
-    validate_settings(cfg)
-    train = args.command == "train"
-    run_id = args.run_id or (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8])
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}", run_id):
-        raise ValueError("run-id must be a short alphanumeric/underscore/hyphen name")
-    output = local_path(cfg["output_root"]) / run_id
-    checkpoint = local_path(args.checkpoint or cfg["initial_checkpoint"])
-    split = "train" if train else args.split
-    if split == "full":
-        # Official RE10K test index, as reported by NoPoSplat and others.
-        index = local_path(FULL_TEST_INDEX)
-    else:
-        index = local_path(cfg["evaluation_index" if split == "test" else "validation_index"])
-    cell_size = cell_size_value(cfg["retention"]["cell_size"] if args.cell_size is None else args.cell_size)
+def base_overrides(cfg, train, checkpoint, index, cell_size):
+    """Hydra overrides shared by every training and evaluation job."""
     t, e = cfg["train"], cfg["evaluation"]
-    base = {
+    return {
         "mode": "train" if train else "test",
         "wandb.mode": "disabled", "seed": cfg["seed"],
         "dataset.re10k.roots": [local_path(cfg["data_root"]).as_posix()],
@@ -168,7 +155,9 @@ def build_plan(cfg, args):
         "test.align_pose": e["align_pose"],
         "test.pose_align_steps": e["pose_align_steps"],
         "test.save_image": e["save_image"],
-        "test.save_video": False, "test.save_compare": False, "test.save_olp_stats": False,
+        "test.save_video": False, "test.save_compare": False,
+        # Per-scene metrics and OLP/Gaussian statistics (olp_stats_per_scene.csv).
+        "test.save_olp_stats": e["per_scene_stats"],
         "model.gaussian_retention.random_seed": cfg["seed"],
         "model.gaussian_retention.r_threshold": cfg["retention"]["r_threshold"],
         "model.gaussian_retention.cell_size": cell_size,
@@ -177,56 +166,89 @@ def build_plan(cfg, args):
         "data_loader.test.num_workers": t["workers"],
         "data_loader.test.persistent_workers": False,
     }
+
+
+def train_overrides(cfg, args):
+    """Fine-tuning overrides and a summary of the optimization schedule."""
+    validate_train_args(args)
+    t = cfg["train"]
+    scope = args.train_scope or t["finetune_scope"]
+    accumulate = positive_int(args.accumulate if args.accumulate is not None else t["accumulate"],
+                              "accumulate")
+    steps = positive_int(args.steps if args.steps is not None else t["steps"], "steps")
+    overrides = {
+        # Original NoPoSplat bounded random pairs over the whole train split.
+        # Warm-up 0: fine-tuning starts from a converged checkpoint, so use the
+        # final 45-90 context gap immediately instead of re-ramping from 25.
+        "dataset.re10k.view_sampler.warm_up_steps": 0,
+        "trainer.max_steps": steps,
+        "trainer.accumulate_grad_batches": accumulate,
+        "train.finetune_scope": scope,
+        "trainer.val_check_interval": t["validation_interval"],
+        "train.validation_videos": t["validation_videos"],
+        "checkpointing.every_n_train_steps": t["checkpoint_interval"],
+        "data_loader.train.batch_size": t["batch_size"],
+        "data_loader.train.num_workers": t["workers"],
+        "data_loader.train.persistent_workers": t["workers"] > 0,
+        "optimizer.lr": t["lr"],
+        "optimizer.backbone_lr_multiplier": t["backbone_lr_multiplier"],
+        "model.gaussian_retention.diagnostics_every_n_steps": 100,
+        "model.gaussian_retention.budget_weight": args.budget_weight,
+        "model.gaussian_retention.start_step": args.soft_steps,
+        "model.gaussian_retention.budget_warmup": args.budget_warmup,
+        "model.gaussian_retention.budget_hard_scale": args.budget_hard_scale,
+        "model.gaussian_retention.train_keep_ratio_min": args.ratio_min,
+    }
+    summary = {"finetune_scope": scope, "accumulate": accumulate,
+               "effective_batch_size": t["batch_size"] * accumulate, "optimizer_steps": steps}
+    return overrides, summary
+
+
+def eval_variants(cfg, args, cell_size):
+    """(job name, score, keep ratio, retention enabled) for every eval-grid job."""
+    e = cfg["evaluation"]
+    scores = e["scores"] if args.scores is None else args.scores
+    ratios = [ratio_value(r) for r in (args.ratios or e["ratios"])]
+    if set(scores) - set(SCORES) or len(set(scores)) != len(scores):
+        raise ValueError("scores must be distinct supported scores")
+    if not scores and args.baselines == "none":
+        raise ValueError("eval-grid needs at least one baseline or score")
+    if len(set(ratios)) != len(ratios):
+        raise ValueError("ratios must be distinct")
+    # Both baselines are intentional: OFF vs identity is a deployment gate,
+    # not two independent scientific baselines.
+    baselines = [("baseline-off", "opacity", 1.0, False),
+                 ("baseline-identity", "opacity", 1.0, True)]
+    variants = {"both": baselines, "off": baselines[:1], "none": []}[args.baselines]
+    return variants + [(f"{score}-r{ratio:g}-cell{cell_size}", score, ratio, True)
+                       for score in scores for ratio in ratios]
+
+
+def build_plan(cfg, args):
+    """Build JSON-serializable jobs without touching disk or loading a checkpoint."""
+    validate_settings(cfg)
+    train = args.command == "train"
+    run_id = args.run_id or (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8])
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}", run_id):
+        raise ValueError("run-id must be a short alphanumeric/underscore/hyphen name")
+    output = local_path(cfg["output_root"]) / run_id
+    checkpoint = local_path(args.checkpoint or cfg["initial_checkpoint"])
+    split = "train" if train else args.split
+    if split == "full":
+        # Official RE10K test index, as reported by NoPoSplat and others.
+        index = local_path(FULL_TEST_INDEX)
+    else:
+        index = local_path(cfg["evaluation_index" if split == "test" else "validation_index"])
+    cell_size = cell_size_value(cfg["retention"]["cell_size"] if args.cell_size is None else args.cell_size)
+    base = base_overrides(cfg, train, checkpoint, index, cell_size)
     training = None
     if train:
-        validate_train_args(args)
-        scope = args.train_scope or t["finetune_scope"]
-        accumulate = positive_int(args.accumulate if args.accumulate is not None else t["accumulate"],
-                                  "accumulate")
-        steps = positive_int(args.steps if args.steps is not None else t["steps"], "steps")
-        base.update({
-            # Original NoPoSplat bounded random pairs over the whole train split.
-            # Warm-up 0: fine-tuning starts from a converged checkpoint, so use the
-            # final 45-90 context gap immediately instead of re-ramping from 25.
-            "dataset.re10k.view_sampler.warm_up_steps": 0,
-            "trainer.max_steps": steps,
-            "trainer.accumulate_grad_batches": accumulate,
-            "train.finetune_scope": scope,
-            "trainer.val_check_interval": t["validation_interval"],
-            "train.validation_videos": t["validation_videos"],
-            "checkpointing.every_n_train_steps": t["checkpoint_interval"],
-            "data_loader.train.batch_size": t["batch_size"],
-            "data_loader.train.num_workers": t["workers"],
-            "data_loader.train.persistent_workers": t["workers"] > 0,
-            "optimizer.lr": t["lr"],
-            "optimizer.backbone_lr_multiplier": t["backbone_lr_multiplier"],
-            "model.gaussian_retention.diagnostics_every_n_steps": 100,
-            "model.gaussian_retention.budget_weight": args.budget_weight,
-            "model.gaussian_retention.start_step": args.soft_steps,
-            "model.gaussian_retention.budget_warmup": args.budget_warmup,
-            "model.gaussian_retention.budget_hard_scale": args.budget_hard_scale,
-            "model.gaussian_retention.train_keep_ratio_min": args.ratio_min,
-        })
-        training = {"finetune_scope": scope, "accumulate": accumulate,
-                    "effective_batch_size": t["batch_size"] * accumulate, "optimizer_steps": steps}
+        extra, training = train_overrides(cfg, args)
+        base.update(extra)
         variants = [("pruned" if args.prune else "full", args.score,
                      ratio_value(args.ratio) if args.prune else 1.0, args.prune)]
     else:
-        scores = e["scores"] if args.scores is None else args.scores
-        ratios = [ratio_value(r) for r in (args.ratios or e["ratios"])]
-        if set(scores) - set(SCORES) or len(set(scores)) != len(scores):
-            raise ValueError("scores must be distinct supported scores")
-        if not scores and args.baselines == "none":
-            raise ValueError("eval-grid needs at least one baseline or score")
-        if len(set(ratios)) != len(ratios):
-            raise ValueError("ratios must be distinct")
-        # Both baselines are intentional: OFF vs identity is a deployment gate,
-        # not two independent scientific baselines.
-        variants = [("baseline-off", "opacity", 1.0, False),
-                    ("baseline-identity", "opacity", 1.0, True)]
-        variants = {"both": variants, "off": variants[:1], "none": []}[args.baselines]
-        variants += [(f"{score}-r{ratio:g}-cell{cell_size}", score, ratio, True)
-                     for score in scores for ratio in ratios]
+        variants = eval_variants(cfg, args, cell_size)
     jobs = []
     for name, score, ratio, enabled in variants:
         if enabled and score in ("reliability", "r_filter") and not cfg["reliability"]["enabled"]:

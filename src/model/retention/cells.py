@@ -43,7 +43,7 @@ class GaussianGridLayout:
         cell_h, cell_w = self.cell_shape(cell_size)
         return self.views * cell_h * cell_w
 
-    def _per_pixel(self, values: Tensor) -> Tensor:
+    def per_pixel(self, values: Tensor) -> Tensor:
         """Broadcast a ``[V or 1, H, W]`` map to every Gaussian of each pixel."""
 
         return (
@@ -68,13 +68,12 @@ def gaussian_cell_ids(
 
     if int(cell_size) == 0:
         return torch.zeros(layout.gaussian_count, dtype=torch.long, device=device)
-    _, cell_w = layout.cell_shape(cell_size)
+    cell_h, cell_w = layout.cell_shape(cell_size)
     y = torch.arange(layout.height, device=device) // cell_size
     x = torch.arange(layout.width, device=device) // cell_size
     pixel_cells = y[:, None] * cell_w + x[None, :]
     views = torch.arange(layout.views, device=device).reshape(-1, 1, 1)
-    per_view = pixel_cells[None] + views * (layout.cell_count(cell_size) // layout.views)
-    return layout._per_pixel(per_view).long()
+    return layout.per_pixel(pixel_cells[None] + views * (cell_h * cell_w)).long()
 
 
 def stratified_scores(scores: Tensor, cell_ids: Tensor, cells: int) -> Tensor:
@@ -120,7 +119,7 @@ def grid_scores(layout: GaussianGridLayout, cell_size: int, device: torch.device
         )
     y = torch.arange(layout.height, device=device) % size
     x = torch.arange(layout.width, device=device) % size
-    return layout._per_pixel(-bayer[y[:, None], x[None, :]].float()[None])
+    return layout.per_pixel(-bayer[y[:, None], x[None, :]].float()[None])
 
 
 def distribution_statistics(

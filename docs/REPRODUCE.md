@@ -84,6 +84,15 @@ Expected full-test PSNR / SSIM / LPIPS: 25% 24.62 / 0.817 / 0.184,
 about 17 hours on our GPU with pose alignment on. `--split test` (500 scenes)
 is a faster check: 25.24 PSNR at 50%.
 
+Related evaluations:
+
+- Base model with all Gaussians: `eval-grid --split full --baselines off --scores`
+  (no `--checkpoint`, so the stage 2 checkpoint is evaluated).
+- Original NoPoSplat against OLP-H: `python scripts/run_re10k.py --preset re10k_eval_compare`.
+- Per-scene metrics, for example to find failure cases: set
+  `evaluation.per_scene_stats: true`, which writes `<job>/renders/<job>/olp_stats_per_scene.csv`.
+- Qualitative renders: set `evaluation.save_image: true`.
+
 ## 4. Ablations (50%)
 
 | Row | Training | Evaluation |

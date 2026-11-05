@@ -121,6 +121,15 @@ class RetentionRunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.plan("eval-grid", "--baselines", "none", "--scores")
 
+    def test_per_scene_stats_switch(self):
+        self.assertFalse(self.values(self.plan("eval-grid")["jobs"][0])["test.save_olp_stats"])
+        self.cfg["evaluation"]["per_scene_stats"] = True
+        for job in self.plan("eval-grid")["jobs"]:
+            self.assertTrue(self.values(job)["test.save_olp_stats"])
+        self.cfg["evaluation"]["per_scene_stats"] = "yes"
+        with self.assertRaises(ValueError):
+            self.plan("eval-grid")
+
     def test_rejects_invalid_options(self):
         for args in (("train", "--steps", "0"), ("train", "--run-id", "../escape"),
                      ("eval-grid", "--ratios", "0"), ("eval-grid", "--ratios", "nan"),
