@@ -36,7 +36,7 @@ train:
   steps: 10000
   batch_size: 1
   accumulate: 4
-  workers: 0
+  workers: 4
   lr: 0.00002
   backbone_lr_multiplier: 0.1
   validation_interval: 500

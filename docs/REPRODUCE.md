@@ -50,7 +50,7 @@ DATA_ROOT=/path/to/re10k \
 Copy `config/experiment_runs/retention_suite.yaml`, set `data_root`,
 `initial_checkpoint` (the stage 2 checkpoint), the two index paths and
 `output_root`. Its defaults are the final method: 2 × 2 cells, r threshold
-0.35, 10K steps, batch 1 with 4-step gradient accumulation, lr 2e-5.
+0.35, 10K steps, batch 1 with 4-step gradient accumulation, lr 2e-5, 4 data workers.
 
 Every command prints the planned jobs and stops; add `--execute` to run them.
 
