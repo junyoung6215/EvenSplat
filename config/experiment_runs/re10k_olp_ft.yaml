@@ -1,11 +1,11 @@
 name: re10k_olp_ft
 stage: train
-storage_root: /home/data/olp_h_re10k_slot0/noposplat_runs/re10k
+storage_root: /server/outputs/noposplat_runs/re10k
 data_root: datasets/re10k
 pretrained_weights: ./pretrained_weights/re10k.ckpt
 wandb_mode: disabled
 cuda_visible_devices: 0
-cache_root: /home/data/olp_h_re10k_slot0/runtime_cache
+cache_root: /server/outputs/runtime_cache
 check_env: true
 min_free_gb: 30
 

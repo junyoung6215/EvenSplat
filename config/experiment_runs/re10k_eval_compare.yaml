@@ -1,6 +1,6 @@
 name: re10k_eval_compare
 stage: compare
-storage_root: /home/data/olp_h_re10k_slot0/noposplat_eval/re10k
+storage_root: /server/outputs/noposplat_eval/re10k
 data_root: datasets/re10k
 wandb_mode: disabled
 cuda_visible_devices: 0

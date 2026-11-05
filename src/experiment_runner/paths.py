@@ -66,13 +66,13 @@ def guard_output_path(path: Path, *, allow_overlay_outputs: bool) -> None:
     if not path.is_absolute():
         raise SystemExit(
             f"Refusing relative output path {path}. "
-            "Use /home/data/... or pass --allow-overlay-outputs intentionally."
+            "Use an absolute path outside the repository or pass --allow-overlay-outputs."
         )
     resolved = path.resolve()
     if resolved == REPO_ROOT or REPO_ROOT in resolved.parents:
         raise SystemExit(
             f"Refusing repo-local output path {path}. "
-            "Use /home/data/... or pass --allow-overlay-outputs intentionally."
+            "Use an absolute path outside the repository or pass --allow-overlay-outputs."
         )
 
 
