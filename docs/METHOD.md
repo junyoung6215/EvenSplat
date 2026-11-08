@@ -94,8 +94,8 @@ pixel positions in each cell; `train_keep_ratio_min > 0` draws a new budget
 every training step so one model serves several budgets; `budget_weight > 0`
 adds a loss that trains r itself to rank for the budget (`budget.py`, the
 "learned r" ablation). Learned r and random per-step budgets were below the
-r filter. `grid` was 0.35 dB above it on the 500-scene test subset; its
-full-test evaluation is pending.
+r filter. `grid` is above it on the full test set: 25.35 / 0.839 / 0.159 at
+50% and 24.84 / 0.824 / 0.174 at 25% (r filter: 25.01 and 24.62 dB).
 
 ## Results (RE10K test, 5,590 evaluable scenes, PSNR / SSIM / LPIPS)
 
