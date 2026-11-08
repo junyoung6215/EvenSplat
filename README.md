@@ -25,7 +25,7 @@ and stays close to the unpruned model. On the RealEstate10K test set, keeping 75
 ## Method
 
 <p align="center">
-  <img src="docs/figures/architecture.png" alt="Pose-free backbone, OLP-H, Gaussian heads with reliability, stratified retention and pruning-aware fine-tuning" width="100%">
+  <img src="docs/figures/architecture.png" alt="NoPoSplat backbone with OLP-H and reliability modules in blue, and stratified retention and pruning-aware fine-tuning in orange" width="100%">
 </p>
 
 | | Component | Idea | Code |
@@ -43,7 +43,7 @@ default, and the default config reproduces NoPoSplat. Details: [docs/METHOD.md](
 RealEstate10K, 256 × 256, two context views, full test set (5,590 evaluable scenes).
 
 <p align="center">
-  <img src="docs/figures/psnr_vs_gaussians.png" alt="PSNR against the number of Gaussians for our model, our base and control, NoPoSplat, MVSplat, pixelSplat and ATSplat" width="55%">
+  <img src="docs/figures/psnr_vs_gaussians.png" alt="PSNR versus Gaussian count for EvenSplat and comparison methods on RealEstate10K" width="55%">
 </p>
 <p align="center"><sub>Full RealEstate10K test set. *Reported in NoPoSplat. **Reported in ATSplat. Posed methods use ground-truth
 camera poses. <i>Control</i> is our base fine-tuned for the same 10K steps without pruning.</sub></p>
@@ -64,7 +64,7 @@ camera poses. <i>Control</i> is our base fine-tuned for the same 10K steps witho
 and fine-tuning closes the remaining gaps.
 
 <p align="center">
-  <img src="docs/figures/retention_progression.jpg" alt="One scene at 50%: full, global top-k by r, stratified, and stratified with fine-tuning" width="100%">
+  <img src="docs/figures/retention_progression.jpg" alt="Ground truth, full model, and three 50%-retention variants: global top-k, stratified retention, and pruning-aware fine-tuning" width="100%">
 </p>
 
 | Setting | PSNR ↑ | SSIM ↑ | LPIPS ↓ |
