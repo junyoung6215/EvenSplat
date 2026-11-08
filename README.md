@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>Stratified Retention for Compact<br>Pose-free Feed-forward 3D Gaussian Splatting</h1>
+<h1>EvenSplat: Compact Pose-Free<br>Feed-Forward 3D Gaussian Splatting</h1>
 
 **Kyoosuk Hwang** · **Junyoung Kwon**
 
@@ -18,7 +18,7 @@ Seoul National University of Science and Technology · Capstone Design 2026
   <img src="docs/figures/hero_qualitative.jpg" alt="Ground truth, the unpruned base with 131K Gaussians, and our model with 75, 50 and 25% of the Gaussians" width="100%">
 </p>
 
-From **two unposed images**, our model renders novel views with **25 to 75% of the per-pixel Gaussians**
+**EvenSplat** renders novel views from **two unposed images** using **25 to 75% of the per-pixel Gaussians**
 and stays close to the unpruned model. On the RealEstate10K test set, keeping 75% beats NoPoSplat in PSNR
 (25.26 vs. 25.03 dB), and keeping 50% comes within 0.02 dB while halving peak render memory (167 → 87 MB).
 
@@ -56,9 +56,9 @@ camera poses. <i>Control</i> is our base fine-tuned for the same 10K steps witho
 | NoPoSplat* | 131K | 25.03 | 0.838 | 0.160 |
 | Base (① + ②) | 131K | 24.84 | 0.824 | 0.163 |
 | Control (base + 10K FT, no pruning) | 131K | 25.45 | 0.842 | 0.155 |
-| **Ours 75%** | **98K** | **25.26** | **0.837** | **0.161** |
-| **Ours 50%** | **66K** | **25.01** | **0.829** | **0.169** |
-| **Ours 25%** | **33K** | **24.62** | **0.817** | **0.184** |
+| **EvenSplat 75%** | **98K** | **25.26** | **0.837** | **0.161** |
+| **EvenSplat 50%** | **66K** | **25.01** | **0.829** | **0.169** |
+| **EvenSplat 25%** | **33K** | **24.62** | **0.817** | **0.184** |
 
 **Ablation** at 50% kept (full test set). Global top-k removes whole regions; stratified cells keep every region,
 and fine-tuning closes the remaining gaps.
@@ -82,8 +82,8 @@ and fine-tuning closes the remaining gaps.
 - Python 3.10, PyTorch 2.1.2
 
 ```bash
-git clone https://github.com/junyoung6215/capstone_project
-cd capstone_project
+git clone https://github.com/junyoung6215/EvenSplat
+cd EvenSplat
 bash scripts/create_cuda118_env.sh     # conda env + Gaussian rasterizer
 conda activate noposplat-olp-cuda118
 ```
@@ -95,7 +95,7 @@ Exact versions: [`env/environment-cuda118.yml`](env/environment-cuda118.yml).
 Data and checkpoints go under the repository root (both are git-ignored):
 
 ```text
-capstone_project/
+EvenSplat/
 ├── src/
 │   ├── model/
 │   │   ├── encoder/heads/olp.py           # ① OLP-H
@@ -136,9 +136,9 @@ RE10K_SOURCE_DIR=/path/to/re10k bash scripts/setup_re10k_dataset.sh
 
 | Model | Gaussians kept | Download |
 | --- | :-: | :-: |
-| Ours 25% | 33K | [`retention_r25_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r25_re10k.ckpt) |
-| Ours 50% | 66K | [`retention_r50_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r50_re10k.ckpt) |
-| Ours 75% | 98K | [`retention_r75_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r75_re10k.ckpt) |
+| EvenSplat 25% | 33K | [`retention_r25_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r25_re10k.ckpt) |
+| EvenSplat 50% | 66K | [`retention_r50_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r50_re10k.ckpt) |
+| EvenSplat 75% | 98K | [`retention_r75_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r75_re10k.ckpt) |
 | Base (① + ②), fine-tuning start | 131K | [`epoch_1-step_75000.ckpt`](https://huggingface.co/kyoosuk/noposplat-olp-rel-re10k) |
 
 ```bash
@@ -151,7 +151,7 @@ Copy [`config/experiment_runs/retention_suite.yaml`](config/experiment_runs/rete
 `my_settings.yaml` and set `data_root` and `output_root`. Each command prints its plan; `--execute` runs it.
 
 ```bash
-# Ours 50% on the full test set (use --split test for the 500-scene subset)
+# EvenSplat 50% on the full test set (use --split test for the 500-scene subset)
 python scripts/run_retention.py --config my_settings.yaml eval-grid --split full \
   --checkpoint checkpoints/retention_r50_re10k.ckpt \
   --baselines none --scores r_filter --ratios 0.5 --run-id ours_r50 --execute
