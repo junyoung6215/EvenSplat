@@ -31,7 +31,7 @@ and stays close to the unpruned model. On the RealEstate10K test set, keeping 75
 | | Component | Idea | Code |
 | :-: | --- | --- | --- |
 | ① | **OLP-H** | Fixed orthogonal Hadamard rotation of the Gaussian-head feature | [`olp.py`](src/model/encoder/heads/olp.py) |
-| ② | **Reliability head** | Per-Gaussian gate *r* on opacity, trained with a context-residual loss | [`reliability.py`](src/model/encoder/heads/reliability.py), [`loss_reliability.py`](src/loss/loss_reliability.py) |
+| ② | **Reliability head** | Per-Gaussian gate *r* on opacity, trained with a context-residual loss | [`dpt_gs_head.py`](src/model/encoder/heads/dpt_gs_head.py), [`reliability.py`](src/model/encoder/heads/reliability.py), [`loss_reliability.py`](src/loss/loss_reliability.py) |
 | ③ | **Stratified retention** | Keep the same fraction in every 2×2 pixel cell; drop *r* < 0.35 first, fill the rest at random | [`retention/`](src/model/retention/) |
 | ④ | **Pruning-aware fine-tuning** | Train with the same selection so the kept Gaussians cover the gaps | [`model_wrapper.py`](src/model/model_wrapper.py) |
 
@@ -99,7 +99,7 @@ EvenSplat/
 ├── src/
 │   ├── model/
 │   │   ├── encoder/heads/olp.py           # ① OLP-H
-│   │   ├── encoder/heads/reliability.py   # ② reliability head
+│   │   ├── encoder/heads/dpt_gs_head.py   # ② reliability head (with reliability.py)
 │   │   ├── retention/                     # ③ stratified retention, r filter
 │   │   └── model_wrapper.py               # ④ retention in training and evaluation
 │   ├── loss/loss_reliability.py           # ② context-residual loss
