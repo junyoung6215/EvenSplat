@@ -9,7 +9,7 @@ Seoul National University of Science and Technology · Capstone Design 2026
 [![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)](#requirements)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1.2-EE4C2C?logo=pytorch&logoColor=white)](#requirements)
 [![CUDA](https://img.shields.io/badge/CUDA-11.8-76B900?logo=nvidia&logoColor=white)](#requirements)
-[![Checkpoints](https://img.shields.io/badge/%F0%9F%A4%97-Checkpoints-yellow)](https://huggingface.co/kyoosuk/LitePoSplat)
+[![Checkpoints](https://img.shields.io/badge/%F0%9F%A4%97-Checkpoints-yellow)](https://huggingface.co/kyoosuk/EvenSplat)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 </div>
@@ -136,13 +136,13 @@ RE10K_SOURCE_DIR=/path/to/re10k bash scripts/setup_re10k_dataset.sh
 
 | Model | Gaussians kept | Download |
 | --- | :-: | :-: |
-| EvenSplat 25% | 33K | [`retention_r25_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r25_re10k.ckpt) |
-| EvenSplat 50% | 66K | [`retention_r50_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r50_re10k.ckpt) |
-| EvenSplat 75% | 98K | [`retention_r75_re10k.ckpt`](https://huggingface.co/kyoosuk/LitePoSplat/blob/main/retention_r75_re10k.ckpt) |
+| EvenSplat 25% | 33K | [`retention_r25_re10k.ckpt`](https://huggingface.co/kyoosuk/EvenSplat/blob/main/retention_r25_re10k.ckpt) |
+| EvenSplat 50% | 66K | [`retention_r50_re10k.ckpt`](https://huggingface.co/kyoosuk/EvenSplat/blob/main/retention_r50_re10k.ckpt) |
+| EvenSplat 75% | 98K | [`retention_r75_re10k.ckpt`](https://huggingface.co/kyoosuk/EvenSplat/blob/main/retention_r75_re10k.ckpt) |
 | Base (① + ②), fine-tuning start | 131K | [`epoch_1-step_75000.ckpt`](https://huggingface.co/kyoosuk/noposplat-olp-rel-re10k) |
 
 ```bash
-hf download kyoosuk/LitePoSplat retention_r50_re10k.ckpt --local-dir checkpoints
+hf download kyoosuk/EvenSplat retention_r50_re10k.ckpt --local-dir checkpoints
 ```
 
 ## Evaluation
