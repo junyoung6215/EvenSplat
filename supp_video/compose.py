@@ -5,9 +5,9 @@ SCENES = sys.argv[1].split(',')
 OUT = sys.argv[2] if len(sys.argv) > 2 else f'{S}/final/evensplat_supp.mp4'
 PREVIEW = os.environ.get('PREVIEW')  # write PNG stills instead of video
 W, H, FPS = 1920, 1080, 30
-FD = '/usr/share/fonts/truetype/liberation/'
+FD = '/usr/share/fonts/truetype/msttcorefonts/'  # apt install ttf-mscorefonts-installer
 def F(sz, bold=False):
-    return ImageFont.truetype(FD + ('LiberationSerif-Bold.ttf' if bold else 'LiberationSerif-Regular.ttf'), sz)
+    return ImageFont.truetype(FD + ('Times_New_Roman_Bold.ttf' if bold else 'Times_New_Roman.ttf'), sz)
 M = [  # key, label, video dir, score file
     ('pf3', 'PF3plat', 'pf3plat', 'pf3plat'),
     ('nopo', 'NoPoSplat', 'noposplat', 'nopo'),
@@ -116,7 +116,7 @@ def scene_block(k, scene):
         img = base.copy(); img.paste(Image.fromarray(A), (bx, by))
         emit(img, fadein(f))
     # ---- Part C: 8 s 3D overview ----
-    orb = {key: u8(np.stack(imageio.mimread(f'{S}/orbit/{s}/{scene}.mp4', memtest=False))) for key, _, _, s in M if key in ('nopo', 'ours')}
+    orb = {key: u8(np.stack(imageio.mimread(f'{S}/orbit2/{s}/{scene}.mp4', memtest=False))) for key, _, _, s in M if key in ('nopo', 'ours')}
     base = Image.new('RGB', (W, H), 'white'); d = ImageDraw.Draw(base)
     header(d, '3D Gaussians from a Distant Viewpoint')
     os_ = 760; og = 80; ox0 = (W - 2 * os_ - og) // 2; oy = 200
