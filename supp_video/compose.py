@@ -100,15 +100,16 @@ def scene_block(k, scene):
             else:
                 img.paste(fit(vids[key][(f - 120) % 180], vs), (x, vy))
         emit(img, fadein(f))
-    # ---- Part B: 7 s split slider NoPo | Ours ----
+    # ---- Part B: 10 s split slider NoPo | Ours ----
     base = Image.new('RGB', (W, H), 'white'); d = ImageDraw.Draw(base)
     header(d, 'NoPoSplat vs. EvenSplat (Ours)')
     bs = 780; bx = (W - bs) // 2; by = 150
-    text(d, (bx - 30, by + bs // 2 - 40), 'NoPoSplat', F(44, True), 'ra'); metric(d, bx - 30 - 150, by + bs // 2 + 20, sc['nopo'])
-    text(d, (bx + bs + 30, by + bs // 2 - 40), 'EvenSplat (Ours)', F(44, True), 'la'); metric(d, bx + bs + 30 + 165, by + bs // 2 + 20, sc['ours'])
-    for f in range(210):
-        t = f / 210
-        p = 0.5 + 0.38 * np.sin(2 * np.pi * 2 * t)  # two smooth sweeps
+    for cx, key, lab in ((bx - 200, 'nopo', 'NoPoSplat'), (bx + bs + 200, 'ours', 'EvenSplat (Ours)')):
+        text(d, (cx, by + bs // 2 - 40), lab, F(44, True), 'ma'); metric(d, cx, by + bs // 2 + 20, sc[key])
+    NB = 300  # 10 s, one constant-speed sweep: center -> right -> left -> center
+    for f in range(NB):
+        u = (f / NB * 4) % 4
+        p = 0.5 + 0.38 * (u if u < 1 else 2 - u if u < 3 else u - 4)
         xs = int(bs * p)
         A = np.asarray(fit(vids['nopo'][f % 180], bs)).copy(); B = np.asarray(fit(vids['ours'][f % 180], bs))
         A[:, xs:] = B[:, xs:]
