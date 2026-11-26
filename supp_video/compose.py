@@ -245,8 +245,8 @@ def method_block():
             if sc_ > best: best, at = sc_, (y, x)
     full = 2 * Hc * Wc; half = full // 2
     stages = [
-        dict(n=180, view=(1000, RH / 2, 1.0, None), tag=None),
-        dict(n=270, view=(745, 212, 1.3, (515, 2, 975, 425)), tag=[1, ('s', 'OLP-H', 1), '  +  ', 2, ('s', 'Reliability', 2)],
+        dict(n=150, view=(1000, RH / 2, 1.0, None), tag=None),
+        dict(n=240, view=(745, 212, 1.3, (515, 2, 975, 425)), tag=[1, ('s', 'OLP-H', 1), '  +  ', 2, ('s', 'Reliability', 2)],
              desc=[['One Gaussian per pixel + ', ('b', 'reliability r')], ['Opacity ', ('b', 'α·r'), ': unreliable ones ', ('b', 'fade out')]],
              panels=[('img', Image.fromarray(ctx0), 'Input view', []),
                      ('img', Image.fromarray(cmap(rn)), 'Reliability r', ['low r', None]),
@@ -336,7 +336,7 @@ def method_block():
             emit(img, fa)
         prev = nxt
 
-def results_card(secs=8):
+def results_card(secs=5):
     base = Image.new('RGB', (W, H), 'white'); d = ImageDraw.Draw(base)
     header(d, 'Quantitative Results', '(RealEstate10K, full test set)')
     fig = Image.open(f'{S}/psnr_vs_gaussians.png').convert('RGB')
