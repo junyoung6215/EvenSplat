@@ -109,11 +109,13 @@ def scene_block(k, scene):
     for cx, key, lab in ((bx - 200, 'nopo', 'NoPoSplat'), (bx + bs + 200, 'ours', 'EvenSplat (Ours)')):
         text(d, (cx, by + bs // 2 - 40), lab, F(44, True), 'ma'); metric(d, cx, by + bs // 2 + 20, sc[key])
     NB = 300  # 10 s, one constant-speed sweep: center -> right -> left -> center
+    fb = int(np.argmax([np.abs(vids['nopo'][i].astype(float) - vids['ours'][i].astype(float)).mean() for i in range(180)]))
+    A0 = np.asarray(fit(vids['nopo'][fb], bs)); B0 = np.asarray(fit(vids['ours'][fb], bs))
     for f in range(NB):
         u = (f / NB * 4) % 4
         p = 0.5 + 0.38 * (u if u < 1 else 2 - u if u < 3 else u - 4)
         xs = int(bs * p)
-        A = np.asarray(fit(vids['nopo'][f % 180], bs)).copy(); B = np.asarray(fit(vids['ours'][f % 180], bs))
+        A = A0.copy(); B = B0
         A[:, xs:] = B[:, xs:]
         A[:, max(0, xs - 2):xs + 2] = 255
         img = base.copy(); img.paste(Image.fromarray(A), (bx, by))
@@ -150,10 +152,22 @@ def load_scores(name):
     for l in open(p):
         d = json.loads(l); acc.setdefault(d['scene'], []).append(d)
     return {k: {'n': v[0]['n'], 'psnr': sum(x['psnr'] for x in v) / len(v)} for k, v in acc.items()}
-def mask_view(ctx0, keep, P, inset_at=None):
+def mask_arr(ctx0, keep):
     kv = keep.reshape(-1, ctx0.shape[0], ctx0.shape[1])[0]
     a = ctx0.astype(float)
-    a = np.where(kv[..., None], a, a * 0.22 + 255 * 0.78).astype(np.uint8)
+    return np.where(kv[..., None], a, a * 0.22 + 255 * 0.78).astype(np.uint8)
+def zoom_patch(a, at, size, n=16):
+    y, x = at
+    sub = Image.fromarray(a[y:y + n, x:x + n]).resize((size, size), Image.NEAREST)
+    d = ImageDraw.Draw(sub); z = size / n
+    for k in range(0, n + 1, 2):
+        w = 2 if k % 2 == 0 else 1
+        d.line([(int(k * z), 0), (int(k * z), size)], fill=(140, 140, 140), width=w)
+        d.line([(0, int(k * z)), (size, int(k * z))], fill=(140, 140, 140), width=w)
+    fr = Image.new('RGB', (size + 8, size + 8), ORANGE); fr.paste(sub, (4, 4))
+    return fr
+def mask_view(ctx0, keep, P, inset_at=None):
+    a = mask_arr(ctx0, keep)
     im = Image.fromarray(a).resize((P, P), Image.NEAREST)
     if inset_at is not None:
         y, x = inset_at; n = 16; z = 7
@@ -167,20 +181,30 @@ def mask_view(ctx0, keep, P, inset_at=None):
         ImageDraw.Draw(im).rectangle([x * P / ctx0.shape[1], y * P / ctx0.shape[0], (x + n) * P / ctx0.shape[1], (y + n) * P / ctx0.shape[0]], outline=ORANGE, width=2)
     return im
 
+BLUE = (25, 70, 150)
+STEP_COL = {1: BLUE, 2: BLUE, 3: ORANGE, 4: ORANGE}
 def rich(d, xy, parts, font, fill, anchor='la'):
-    # parts: ints draw a circled number, strings draw text; anchor 'la' or 'ma'
-    sz = font.size; r = int(sz * 0.42); gap = int(sz * 0.25)
-    widths = [(2 * r + gap) if isinstance(p, int) else d.textlength(p, font=font) + gap for p in parts]
+    # parts: int -> circled step number (step colour); str -> regular; ('b', s) -> bold; ('s', s, n) -> bold in step colour
+    sz = font.size; r = int(sz * 0.42); gap = int(sz * 0.22)
+    fb = F(sz, True)
+    def meas(p):
+        if isinstance(p, int): return 2 * r + gap
+        if isinstance(p, str): return d.textlength(p, font=font)
+        return d.textlength(p[1], font=fb)
     x, y = xy
-    if anchor == 'ma': x -= sum(widths) // 2
-    for p, w in zip(parts, widths):
+    if anchor == 'ma': x -= sum(meas(p) for p in parts) // 2
+    for p in parts:
         if isinstance(p, int):
-            cy = y + int(sz * 0.55)
-            d.ellipse([x, cy - r, x + 2 * r, cy + r], outline=fill, width=max(2, sz // 14))
-            d.text((x + r, cy), str(p), font=F(int(sz * 0.62), True), fill=fill, anchor='mm')
-        else:
+            c = STEP_COL[p]; cy = y + int(sz * 0.55)
+            d.ellipse([x, cy - r, x + 2 * r, cy + r], outline=c, width=max(2, sz // 14))
+            d.text((x + r, cy), str(p), font=F(int(sz * 0.62), True), fill=c, anchor='mm')
+        elif isinstance(p, str):
             d.text((x, y), p, font=font, fill=fill)
-        x += w
+        elif p[0] == 'b':
+            d.text((x, y), p[1], font=fb, fill=fill)
+        else:
+            d.text((x, y), p[1], font=fb, fill=STEP_COL[p[2]])
+        x += meas(p)
 
 def method_block():
     PIPE = Image.open(f'{S}/pipeline.png').convert('RGB')
@@ -220,37 +244,38 @@ def method_block():
             if sc_ > best: best, at = sc_, (y, x)
     full = 2 * Hc * Wc; half = full // 2
     stages = [
-        dict(n=90, view=(1000, RH / 2, 1.0, None), tag=None),
-        dict(n=210, view=(745, 212, 1.3, (515, 2, 975, 425)), tag=[1, 'OLP-H  +', 2, 'Reliability'],
-             desc=['Each pixel predicts one Gaussian', 'and a reliability r in [r_min, 1].', 'Opacity becomes α·r, so unreliable', 'Gaussians fade out.'],
+        dict(n=180, view=(1000, RH / 2, 1.0, None), tag=None),
+        dict(n=300, view=(745, 212, 1.3, (515, 2, 975, 425)), tag=[1, ('s', 'OLP-H', 1), '  +  ', 2, ('s', 'Reliability', 2)],
+             desc=[['One Gaussian per pixel + ', ('b', 'reliability r')], ['Opacity ', ('b', 'α·r'), ': unreliable ones ', ('b', 'fade out')]],
              panels=[('img', Image.fromarray(ctx0), 'Input view', []),
                      ('img', Image.fromarray(cmap(rn)), 'Reliability r', ['low r', None]),
                      ('vid', V['olp'], 'Render (all Gaussians)', met('olp', full))]),
-        dict(n=240, view=(1372, 235, 1.18, (1010, 2, 1735, 470)), tag=[3, 'Stratified retention'],
-             desc=['Keep 50% in every 2×2 cell:', 'low r first, the rest at random.', 'A global top-k by r removes', 'whole regions instead.', '(no fine-tuning yet)'],
+        dict(n=330, view=(1372, 235, 1.18, (1010, 2, 1735, 470)), tag=[3, ('s', 'Stratified retention', 3)],
+             desc=[['Keep ', ('b', '50% in every 2×2 cell')], ['Global top-k ', ('b', 'drops whole regions')], ['(no fine-tuning)']],
              panels=[('mask', mp['abl_cell0']['keep'], 'Global top-k: kept', []),
                      ('vid', V['g'], 'Global top-k', met('g', half)),
                      ('mask', mp['abl_cell2']['keep'], '2×2 stratified: kept', []),
                      ('vid', V['s'], '2×2 stratified', met('s', half))]),
-        dict(n=210, view=(1000, RH / 2, 1.0, (335, 468, 1995, 553)), tag=[4, 'Pruning-aware fine-tuning'],
-             desc=['Training uses the same selection,', 'so only the kept Gaussians', 'receive gradients and learn to', 'cover the pruned ones.'],
+        dict(n=300, view=(1000, RH / 2, 1.0, (335, 468, 1995, 553)), tag=[4, ('s', 'Pruning-aware fine-tuning', 4)],
+             desc=[['Train ', ('b', 'with the same selection')], ['Kept Gaussians ', ('b', 'cover the pruned')]],
              panels=[('mask', mp['ours_map']['keep'], 'Kept (r filter, 2×2)', []),
                      ('vid', V['s'], 'Before fine-tuning', met('s', half)),
                      ('vid', V['ours'], 'EvenSplat (Ours)', met('ours', half))]),
     ]
+    pop = [(zoom_patch(mask_arr(ctx0, mp[k]['keep']), at, 380), lab) for k, lab in (('abl_cell0', 'Global top-k'), ('abl_cell2', '2×2 stratified'))]
     prev = stages[0]['view']
     for si, st in enumerate(stages):
         base = Image.new('RGB', (W, H), 'white'); d = ImageDraw.Draw(base)
         header(d, 'Method')
         if st['tag'] is None:
-            text(d, (W // 2, 700), 'Pose-free 3D Gaussian Splatting from two unposed views,', F(38), 'ma')
-            text(d, (W // 2, 752), 'keeping an even 50% of the pixel-aligned Gaussians.', F(38), 'ma')
-            rich(d, (W // 2, 840), [1, 'OLP-H   ', 2, 'Reliability   ', 3, 'Stratified retention   ', 4, 'Pruning-aware fine-tuning'], F(34, True), ORANGE, 'ma')
+            rich(d, (W // 2, 690), ['Pose-free 3DGS from ', ('b', 'two unposed views')], F(40), (0, 0, 0), 'ma')
+            rich(d, (W // 2, 745), ['keeping an ', ('b', 'even 50%'), ' of pixel-aligned Gaussians'], F(40), (0, 0, 0), 'ma')
+            rich(d, (W // 2, 840), [1, ('s', 'OLP-H     ', 1), 2, ('s', 'Reliability     ', 2), 3, ('s', 'Stratified retention     ', 3), 4, ('s', 'Pruning-aware fine-tuning', 4)], F(34), (0, 0, 0), 'ma')
             ps = []
         else:
-            rich(d, (60, 640), st['tag'], F(40, True), ORANGE)
+            rich(d, (60, 640), st['tag'], F(40, True), (60, 60, 60))
             for i, l in enumerate(st['desc']):
-                text(d, (60, 706 + i * 42), l, F(31), fill=(40, 40, 40))
+                rich(d, (60, 712 + i * 48), l, F(32), (40, 40, 40))
             n = len(st['panels']); P = 300 if n <= 3 else 268; g = 26
             x0 = 660 + (1200 - (n * P + (n - 1) * g)) // 2; py = 690
             ps = []
@@ -274,6 +299,22 @@ def method_block():
             img.paste(band(cx, cy, z, nxt[3], ease((f - T) / 12)), (BX, BY))
             for src, x, y, P in ps:
                 img.paste(fit(src[f % 180], P), (x, y))
+            if si == 2:  # pull the 2x2 insets out and enlarge them for a moment
+                g0, g1, g2 = 110, 26, 130
+                if g0 <= f < g0 + g1 + g2 + g1:
+                    u = ease((f - g0) / g1) if f < g0 + g1 + g2 else 1 - ease((f - g0 - g1 - g2) / g1)
+                    ov = Image.new('RGB', (W - 640, H - 610), 'white')
+                    img.paste(Image.blend(img.crop((640, 610, W, H)), ov, 0.85 * u), (640, 610))
+                    dd = ImageDraw.Draw(img)
+                    for k, (pim, plab) in enumerate(pop):
+                        # start: inset spot in its mask panel; end: big square side by side
+                        P0 = 268; px = 660 + (1200 - (4 * P0 + 3 * 26)) // 2 + (0 if k == 0 else 2) * (P0 + 26)
+                        sx, sy, ss = px + P0 - 118, 690 + P0 - 118, 112
+                        ex, ey, es = 1260 - 410 + k * 430, 628, 380
+                        cx_ = sx + (ex - sx) * u; cy_ = sy + (ey - sy) * u; cs = int(ss + (es - ss) * u)
+                        img.paste(pim.resize((cs + 8, cs + 8), Image.NEAREST), (int(cx_), int(cy_)))
+                        if u > 0.9:
+                            dd.text((int(ex + es / 2 + 4), int(ey) + es + 12), plab, font=F(32, True), fill=(0, 0, 0), anchor='ma')
             fa = fadein(f, 10) if si > 0 else fadein(f, 15)
             if si == len(stages) - 1: fa = min(fa, (st['n'] - f) / 12)
             emit(img, fa)
@@ -281,7 +322,7 @@ def method_block():
 
 def results_card(secs=8):
     base = Image.new('RGB', (W, H), 'white'); d = ImageDraw.Draw(base)
-    header(d, 'Results', '(RealEstate10K, full test set)')
+    header(d, 'Quantitative Results', '(RealEstate10K, full test set)')
     fig = Image.open(f'{S}/psnr_vs_gaussians.png').convert('RGB')
     fh = 780; fw = int(fig.size[0] * fh / fig.size[1])
     base.paste(fig.resize((fw, fh), Image.LANCZOS), (70, 170))
@@ -295,6 +336,7 @@ def results_card(secs=8):
     d.line([(tx, ty + 50), (tx + 800, ty + 50)], fill=(0, 0, 0), width=2)
     for i, r in enumerate(rows):
         y = ty + 72 + i * 58
+        if i == 2: d.rectangle([tx - 12, y - 12, tx + 812, y + 46], fill=(232, 232, 232))
         for j, (name, an, dx) in enumerate(cols): text(d, (tx + dx, y), r[j], F(32, r[5] and j == 0), an)
     d.line([(tx, ty + 72 + 4 * 58), (tx + 800, ty + 72 + 4 * 58)], fill=(0, 0, 0), width=2)
     text(d, (tx, ty + 72 + 4 * 58 + 24), '*Reported in NoPoSplat.', F(26), fill=(90, 90, 90))
@@ -303,8 +345,9 @@ def results_card(secs=8):
     n = int(secs * FPS)
     for i in range(n): emit(base, min(fadein(i, 15), (n - i) / 15))
 
-title_card([('EvenSplat', 120, True), ('Kyoosuk Hwang, Junyoung Kwon', 48, False)], 4)
+title_card([('EvenSplat', 120, True), ('2026 Capstone Design', 50, False), ('Kyoosuk Hwang, Junyoung Kwon', 44, False)], 4)
 if os.path.exists(f'{S}/maps'): method_block()
+title_card([('Results', 110, True)], 2)
 for k, s in enumerate(SCENES): scene_block(k, s)
 if os.path.exists(f'{S}/psnr_vs_gaussians.png'): results_card()
 title_card([('Thank you for watching.', 90, False)], 3)
