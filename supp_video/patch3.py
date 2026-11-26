@@ -3,11 +3,10 @@ p = '/workspace/EvenSplat/src/model/model_wrapper.py'
 s = open(p).read()
 if '_save_supp_map' in s:
     print('ALREADY'); raise SystemExit
-b = '        gaussians = retention.gaussians\n        if os.environ.get("SUPP_ORBIT_DIR"):\n'
+b = '            self._save_supp_orbit(batch, gaussians)\n'
 assert s.count(b) == 1
-s = s.replace(b, '        gaussians = retention.gaussians\n' + '''        if os.environ.get("SUPP_MAP_DIR"):
+s = s.replace(b, b + '''        if os.environ.get("SUPP_MAP_DIR"):
             self._save_supp_map(batch, full_gaussians, retention, visualization_dump)
-        if os.environ.get("SUPP_ORBIT_DIR"):
 ''')
 c = '    def test_step_align(self, batch, gaussians):\n'
 assert s.count(c) == 1
