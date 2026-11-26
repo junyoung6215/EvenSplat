@@ -361,7 +361,7 @@ def results_card(secs=5):
     n = int(secs * FPS)
     for i in range(n): emit(base, min(fadein(i, 15), (n - i) / 15))
 
-title_card([('EvenSplat', 130, True, (0, 0, 0), 1.25), (': Gaussian Pruning for Pose-Free Feed-Forward 3DGS', 51, False, (70, 70, 70)), ('', 30, False), ('2026 Capstone Design', 42, False), ('Kyoosuk Hwang, Junyoung Kwon', 42, False)], 4)
+title_card([('EvenSplat', 130, True, (0, 0, 0), 1.25), (': Gaussian Pruning for Pose-Free Feed-Forward 3DGS', 44, False, (70, 70, 70)), ('', 30, False), ('2026 Capstone Design', 42, False), ('Kyoosuk Hwang, Junyoung Kwon', 42, False)], 4)
 if os.path.exists(f'{S}/maps'): method_block()
 title_card([('Results', 110, True)], 2)
 for k, s in enumerate(SCENES): scene_block(k, s)
