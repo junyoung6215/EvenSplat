@@ -131,7 +131,7 @@ def scene_block(k, scene):
         text(d, (cx, oy - 58), M[1 if key == 'nopo' else 3][1], F(42, True), 'ma')
         text(d, (cx, oy + os_ + 14), f"{gk(sc[key]['n'])} Gaussians", F(32), 'ma', fill=(70, 70, 70))
     nf = len(orb['nopo'])
-    for f in range(240):
+    for f in range(150):
         img = base.copy()
         for j, key in enumerate(('nopo', 'ours')):
             img.paste(fit(orb[key][f % nf], os_), (ox0 + j * (os_ + og), oy))
