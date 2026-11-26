@@ -36,11 +36,11 @@ def fit(img, size):
 def text(d, xy, s, font, anchor='la', fill=(0, 0, 0)):
     d.text(xy, s, font=font, fill=fill, anchor=anchor)
 def header(d, main, sub=None):
-    f1, f2 = F(60), F(38)
-    text(d, (60, 30), main, f1)
+    f1, f2 = F(72), F(42)
+    text(d, (60, 22), main, f1)
     if sub:
         w = d.textlength(main, font=f1)
-        text(d, (60 + w + 16, 30 + 60 - 40), sub, f2, anchor='la')
+        text(d, (60 + w + 16, 22 + 72 - 46), sub, f2, anchor='la')
 def gk(n): return f'{n / 1000:.1f}K'
 def metric(d, cx, y, sc, fs=30):
     text(d, (cx, y), f"PSNR {sc['psnr']:.2f} dB", F(fs), 'ma')
@@ -75,12 +75,12 @@ def scene_block(k, scene):
     # ---- Part A: 10 s comparison ----
     base = Image.new('RGB', (W, H), 'white'); d = ImageDraw.Draw(base)
     header(d, 'Novel View Synthesis', '(RealEstate10K)')
-    text(d, (W // 2, 118), 'Input views', F(36, True), 'ma')
+    text(d, (W // 2, 140), 'Input views', F(36, True), 'ma')
     cs, gap = 290, 30
     x0 = W // 2 - cs - gap // 2
-    for j in range(2): base.paste(fit(ctx[j], cs), (x0 + j * (cs + gap), 166))
+    for j in range(2): base.paste(fit(ctx[j], cs), (x0 + j * (cs + gap), 186))
     vs, vg = 420, 40
-    vx0 = (W - 4 * vs - 3 * vg) // 2; vy = 540
+    vx0 = (W - 4 * vs - 3 * vg) // 2; vy = 560
     for j, (key, lab, _, _) in enumerate(M):
         cx = vx0 + j * (vs + vg) + vs // 2
         if key != 'ours':
@@ -105,7 +105,7 @@ def scene_block(k, scene):
     # ---- Part B: 10 s split slider NoPo | Ours ----
     base = Image.new('RGB', (W, H), 'white'); d = ImageDraw.Draw(base)
     header(d, 'NoPoSplat vs. EvenSplat (Ours)')
-    bs = 780; bx = (W - bs) // 2; by = 150
+    bs = 780; bx = (W - bs) // 2; by = 175
     for cx, key, lab in ((bx - 200, 'nopo', 'NoPoSplat'), (bx + bs + 200, 'ours', 'EvenSplat (Ours)')):
         text(d, (cx, by + bs // 2 - 40), lab, F(44, True), 'ma'); metric(d, cx, by + bs // 2 + 20, sc[key])
     NB = 300  # 10 s, one constant-speed sweep: center -> right -> left -> center
@@ -124,7 +124,7 @@ def scene_block(k, scene):
     orb = {key: u8(np.stack(imageio.mimread(f'{S}/orbit2/{s}/{scene}.mp4', memtest=False))) for key, _, _, s in M if key in ('nopo', 'ours')}
     base = Image.new('RGB', (W, H), 'white'); d = ImageDraw.Draw(base)
     header(d, '3D Gaussians from a Distant Viewpoint')
-    os_ = 760; og = 80; ox0 = (W - 2 * os_ - og) // 2; oy = 200
+    os_ = 760; og = 80; ox0 = (W - 2 * os_ - og) // 2; oy = 220
     for j, key in enumerate(('nopo', 'ours')):
         cx = ox0 + j * (os_ + og) + os_ // 2
         text(d, (cx, oy - 58), M[1 if key == 'nopo' else 3][1], F(42, True), 'ma')
@@ -209,7 +209,7 @@ def rich(d, xy, parts, font, fill, anchor='la'):
 def method_block():
     PIPE = Image.open(f'{S}/pipeline.png').convert('RGB')
     PW, PH = PIPE.size; RW = 2000.0; RH = RW * PH / PW; SX = PW / RW
-    BW = 1800; BH = int(BW * PH / PW); BX = (W - BW) // 2; BY = 92
+    BW = 1800; BH = int(BW * PH / PW); BX = (W - BW) // 2; BY = 112
     def band(cx, cy, z, hl, ha):
         w = RW / z; h = RH / z
         x0 = min(max(cx - w / 2, 0), RW - w); y0 = min(max(cy - h / 2, 0), RH - h)
@@ -245,7 +245,7 @@ def method_block():
     full = 2 * Hc * Wc; half = full // 2
     stages = [
         dict(n=180, view=(1000, RH / 2, 1.0, None), tag=None),
-        dict(n=300, view=(745, 212, 1.3, (515, 2, 975, 425)), tag=[1, ('s', 'OLP-H', 1), '  +  ', 2, ('s', 'Reliability', 2)],
+        dict(n=270, view=(745, 212, 1.3, (515, 2, 975, 425)), tag=[1, ('s', 'OLP-H', 1), '  +  ', 2, ('s', 'Reliability', 2)],
              desc=[['One Gaussian per pixel + ', ('b', 'reliability r')], ['Opacity ', ('b', 'α·r'), ': unreliable ones ', ('b', 'fade out')]],
              panels=[('img', Image.fromarray(ctx0), 'Input view', []),
                      ('img', Image.fromarray(cmap(rn)), 'Reliability r', ['low r', None]),
@@ -262,7 +262,7 @@ def method_block():
                      ('vid', V['s'], 'Before fine-tuning', met('s', half)),
                      ('vid', V['ours'], 'EvenSplat (Ours)', met('ours', half))]),
     ]
-    pop = [(zoom_patch(mask_arr(ctx0, mp[k]['keep']), at, 380), lab) for k, lab in (('abl_cell0', 'Global top-k'), ('abl_cell2', '2×2 stratified'))]
+    pop = [(zoom_patch(mask_arr(ctx0, mp[k]['keep']), at, 370), lab) for k, lab in (('abl_cell0', 'Global top-k'), ('abl_cell2', '2×2 stratified'))]
     prev = stages[0]['view']
     for si, st in enumerate(stages):
         base = Image.new('RGB', (W, H), 'white'); d = ImageDraw.Draw(base)
@@ -273,12 +273,12 @@ def method_block():
             rich(d, (W // 2, 840), [1, ('s', 'OLP-H     ', 1), 2, ('s', 'Reliability     ', 2), 3, ('s', 'Stratified retention     ', 3), 4, ('s', 'Pruning-aware fine-tuning', 4)], F(34), (0, 0, 0), 'ma')
             ps = []
         else:
-            rich(d, (60, 640), st['tag'], F(40, True), (60, 60, 60))
+            rich(d, (60, 658), st['tag'], F(40, True), (60, 60, 60))
             for i, l in enumerate(st['desc']):
-                rich(d, (60, 712 + i * 48), l, F(32), (40, 40, 40))
-            n = len(st['panels']); P = 300 if n <= 3 else 268; g = 26
-            x0 = 660 + (1200 - (n * P + (n - 1) * g)) // 2; py = 690
-            ps = []
+                rich(d, (60, 728 + i * 48), l, F(32), (40, 40, 40))
+            n = len(st['panels']); P = 288 if n <= 3 else 262; g = 26
+            x0 = 660 + (1200 - (n * P + (n - 1) * g)) // 2; py = 712
+            ps = []; vlab = []
             for j, (kind, src, lab, lines) in enumerate(st['panels']):
                 x = x0 + j * (P + g); cx = x + P // 2
                 text(d, (cx, py - 44), lab, F(29, True), 'ma')
@@ -290,7 +290,7 @@ def method_block():
                 else:
                     for i, l in enumerate(lines):
                         if l: text(d, (cx, py + P + 10 + i * 32), l, F(27), 'ma', fill=(0, 0, 0) if i == 0 and 'PSNR' in l else (70, 70, 70))
-                if kind == 'vid': ps.append((src, x, py, P))
+                if kind == 'vid': ps.append((src, x, py, P)); vlab.append((lab, lines))
         nxt = st['view']; T = 24
         for f in range(st['n']):
             t = ease(f / T)
@@ -308,13 +308,28 @@ def method_block():
                     dd = ImageDraw.Draw(img)
                     for k, (pim, plab) in enumerate(pop):
                         # start: inset spot in its mask panel; end: big square side by side
-                        P0 = 268; px = 660 + (1200 - (4 * P0 + 3 * 26)) // 2 + (0 if k == 0 else 2) * (P0 + 26)
-                        sx, sy, ss = px + P0 - 118, 690 + P0 - 118, 112
-                        ex, ey, es = 1260 - 410 + k * 430, 628, 380
+                        P0 = 262; px = 660 + (1200 - (4 * P0 + 3 * 26)) // 2 + (0 if k == 0 else 2) * (P0 + 26)
+                        sx, sy, ss = px + P0 - 118, 712 + P0 - 118, 112
+                        ex, ey, es = 1260 - 410 + k * 430, 640, 370
                         cx_ = sx + (ex - sx) * u; cy_ = sy + (ey - sy) * u; cs = int(ss + (es - ss) * u)
                         img.paste(pim.resize((cs + 8, cs + 8), Image.NEAREST), (int(cx_), int(cy_)))
                         if u > 0.9:
                             dd.text((int(ex + es / 2 + 4), int(ey) + es + 12), plab, font=F(32, True), fill=(0, 0, 0), anchor='ma')
+            if si == 3:  # enlarge "before" vs "after fine-tuning" renders side by side
+                g0, g1, g2 = 100, 26, 140
+                if g0 <= f < g0 + g1 + g2 + g1:
+                    u = ease((f - g0) / g1) if f < g0 + g1 + g2 else 1 - ease((f - g0 - g1 - g2) / g1)
+                    keep = img.crop((0, 620, 640, H))  # left caption stays readable
+                    img = Image.blend(img, Image.new('RGB', (W, H), 'white'), 0.94 * u); img.paste(keep, (0, 620))
+                    dd = ImageDraw.Draw(img)
+                    es = 580; ey = 300
+                    for k, (src, x, y, P) in enumerate(ps):
+                        ex = 680 + k * (es + 40)
+                        cx_ = x + (ex - x) * u; cy_ = y + (ey - y) * u; cs = int(P + (es - P) * u)
+                        img.paste(fit(src[f % 180], cs), (int(cx_), int(cy_)))
+                        if u > 0.9:
+                            lab, lines = vlab[k]
+                            dd.text((ex + es // 2, ey + es + 10), f"{lab}   {lines[0]}", font=F(32, True), fill=(0, 0, 0), anchor='ma')
             fa = fadein(f, 10) if si > 0 else fadein(f, 15)
             if si == len(stages) - 1: fa = min(fa, (st['n'] - f) / 12)
             emit(img, fa)
@@ -325,13 +340,13 @@ def results_card(secs=8):
     header(d, 'Quantitative Results', '(RealEstate10K, full test set)')
     fig = Image.open(f'{S}/psnr_vs_gaussians.png').convert('RGB')
     fh = 780; fw = int(fig.size[0] * fh / fig.size[1])
-    base.paste(fig.resize((fw, fh), Image.LANCZOS), (70, 170))
+    base.paste(fig.resize((fw, fh), Image.LANCZOS), (70, 195))
     cols = [('Model', 'la', 0), ('#Gaussians', 'ma', 330), ('PSNR ↑', 'ma', 480), ('SSIM ↑', 'ma', 610), ('LPIPS ↓', 'ma', 740)]
     rows = [('NoPoSplat*', '131.1K', '25.03', '0.838', '0.160', False),
             ('EvenSplat 75%', '98.3K', '25.26', '0.837', '0.161', True),
             ('EvenSplat 50%', '65.5K', '25.01', '0.829', '0.169', True),
             ('EvenSplat 25%', '32.8K', '24.62', '0.817', '0.184', True)]
-    tx = 70 + fw + 50; ty = 330
+    tx = 70 + fw + 50; ty = 350
     for name, an, dx in cols: text(d, (tx + dx, ty), name, F(32, True), an)
     d.line([(tx, ty + 50), (tx + 800, ty + 50)], fill=(0, 0, 0), width=2)
     for i, r in enumerate(rows):
