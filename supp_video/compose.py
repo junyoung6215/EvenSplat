@@ -41,9 +41,10 @@ def header(d, main, sub=None):
     if sub:
         w = d.textlength(main, font=f1)
         text(d, (60 + w + 16, 30 + 60 - 40), sub, f2, anchor='la')
+def gk(n): return f'{n / 1000:.1f}K'
 def metric(d, cx, y, sc, fs=30):
     text(d, (cx, y), f"PSNR {sc['psnr']:.2f} dB", F(fs), 'ma')
-    text(d, (cx, y + fs + 8), f"{sc['n']:,} Gaussians", F(fs), 'ma', fill=(70, 70, 70))
+    text(d, (cx, y + fs + 8), f"{gk(sc['n'])} Gaussians", F(fs), 'ma', fill=(70, 70, 70))
 frames_written = [0]
 writer = None if PREVIEW else imageio.get_writer(OUT, fps=FPS, codec='libx264', quality=None, ffmpeg_params=['-crf', '16', '-pix_fmt', 'yuv420p', '-preset', 'slow'], macro_block_size=1)
 def emit(img, fade=None):
@@ -125,7 +126,7 @@ def scene_block(k, scene):
     for j, key in enumerate(('nopo', 'ours')):
         cx = ox0 + j * (os_ + og) + os_ // 2
         text(d, (cx, oy - 58), M[1 if key == 'nopo' else 3][1], F(42, True), 'ma')
-        text(d, (cx, oy + os_ + 14), f"{sc[key]['n']:,} Gaussians", F(32), 'ma', fill=(70, 70, 70))
+        text(d, (cx, oy + os_ + 14), f"{gk(sc[key]['n'])} Gaussians", F(32), 'ma', fill=(70, 70, 70))
     nf = len(orb['nopo'])
     for f in range(240):
         img = base.copy()
@@ -135,7 +136,7 @@ def scene_block(k, scene):
 
 
 # ================= Method section (pipeline zoom + per-step renders) =================
-MSCENE = os.environ.get('MSCENE', 'c48f19e2ffa52523')
+MSCENE = os.environ.get('MSCENE', '9d8ca3b8ce050769')
 ORANGE = (200, 90, 20)
 def ease(t): t = min(max(t, 0.0), 1.0); return t * t * (3 - 2 * t)
 def cmap(x):  # viridis-like
@@ -209,7 +210,7 @@ def method_block():
     def met(k, n):
         out = []
         if sc[k]: out.append(f"PSNR {sc[k]['psnr']:.2f} dB")
-        out.append(f"{n:,} Gaussians"); return out
+        out.append(f"{gk(n)} Gaussians"); return out
     # find an inset location with a visible mix in the global mask
     kg = mp['abl_cell0']['keep'].reshape(-1, Hc, Wc)[0].astype(float)
     best, at = -1, (Hc // 2, Wc // 2)
@@ -285,10 +286,10 @@ def results_card(secs=8):
     fh = 780; fw = int(fig.size[0] * fh / fig.size[1])
     base.paste(fig.resize((fw, fh), Image.LANCZOS), (70, 170))
     cols = [('Model', 'la', 0), ('#Gaussians', 'ma', 330), ('PSNR ↑', 'ma', 480), ('SSIM ↑', 'ma', 610), ('LPIPS ↓', 'ma', 740)]
-    rows = [('NoPoSplat*', '131K', '25.03', '0.838', '0.160', False),
-            ('EvenSplat 75%', '98K', '25.26', '0.837', '0.161', True),
-            ('EvenSplat 50%', '66K', '25.01', '0.829', '0.169', True),
-            ('EvenSplat 25%', '33K', '24.62', '0.817', '0.184', True)]
+    rows = [('NoPoSplat*', '131.1K', '25.03', '0.838', '0.160', False),
+            ('EvenSplat 75%', '98.3K', '25.26', '0.837', '0.161', True),
+            ('EvenSplat 50%', '65.5K', '25.01', '0.829', '0.169', True),
+            ('EvenSplat 25%', '32.8K', '24.62', '0.817', '0.184', True)]
     tx = 70 + fw + 50; ty = 330
     for name, an, dx in cols: text(d, (tx + dx, ty), name, F(32, True), an)
     d.line([(tx, ty + 50), (tx + 800, ty + 50)], fill=(0, 0, 0), width=2)
