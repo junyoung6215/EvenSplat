@@ -62,8 +62,9 @@ def title_card(lines, secs):
     n = int(secs * FPS)
     base = Image.new('RGB', (W, H), 'white'); d = ImageDraw.Draw(base)
     y = H // 2 - sum(l[1] for l in lines) // 2 - 20
-    for s, sz, b in lines:
-        text(d, (W // 2, y), s, F(sz, b), 'ma'); y += int(sz * 1.5)
+    for l in lines:  # (text, size, bold[, colour[, line-gap factor]])
+        s, sz, b = l[:3]; col = l[3] if len(l) > 3 else (0, 0, 0); gap = l[4] if len(l) > 4 else 1.5
+        text(d, (W // 2, y), s, F(sz, b), 'ma', fill=col); y += int(sz * gap)
     for i in range(n):
         emit(base, min(fadein(i, 15), (n - i) / 15))
 
@@ -360,7 +361,7 @@ def results_card(secs=8):
     n = int(secs * FPS)
     for i in range(n): emit(base, min(fadein(i, 15), (n - i) / 15))
 
-title_card([('EvenSplat', 130, True), ('Gaussian Pruning for Pose-Free Feed-Forward 3DGS', 54, False), ('', 30, False), ('2026 Capstone Design', 42, False), ('Kyoosuk Hwang, Junyoung Kwon', 42, False)], 5)
+title_card([('EvenSplat', 130, True, (0, 0, 0), 1.25), (': Gaussian Pruning for Pose-Free Feed-Forward 3DGS', 51, False, (70, 70, 70)), ('', 30, False), ('2026 Capstone Design', 42, False), ('Kyoosuk Hwang, Junyoung Kwon', 42, False)], 4)
 if os.path.exists(f'{S}/maps'): method_block()
 title_card([('Results', 110, True)], 2)
 for k, s in enumerate(SCENES): scene_block(k, s)
